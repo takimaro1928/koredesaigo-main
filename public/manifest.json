@@ -1,0 +1,29 @@
+{
+  "short_name": "学習管理",
+  "name": "学習スケジュール管理",
+  "description": "暗記曲線に基づく学習スケジュール管理アプリ",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "logo192.png", // publicフォルダに配置したアイコン
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable" // マスキング可能なアイコンとして指定
+    },
+    {
+      "src": "logo512.png", // publicフォルダに配置したアイコン
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable" // マスキング可能なアイコンとして指定
+    }
+  ],
+  "start_url": ".", // アプリの開始URL
+  "display": "standalone", // ネイティブアプリのように表示
+  "theme_color": "#4f46e5", // アプリのテーマカラー (Indigo)
+  "background_color": "#ffffff", // スプラッシュ画面の背景色 (白)
+  "orientation": "portrait-primary" // 縦向き推奨
+}
