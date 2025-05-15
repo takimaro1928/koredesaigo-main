@@ -116,20 +116,28 @@
 
 /* モーダル内の問題アイテム */
 .modalQuestionItem {
-  padding: 6px 10px; /* 上下を少し増やす */
-  background-color: #f3f4f6; /* bg-gray-100 */
-  color: #1f2937; /* text-gray-800 */
-  border-radius: 6px; /* rounded-md */
-  font-size: 0.875rem; /* text-sm */
-  margin: 2px 0; /* 上下マージン減らす */
-  border: 1px solid #e5e7eb; /* border-gray-200 */
-  white-space: normal; /* 折り返し許可 */
-  overflow-wrap: break-word;
-  line-height: 1.4;
-  transition: background-color 0.15s ease;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: #f0f0f0; /* 少し薄い背景色 */
+  cursor: grab; /* ドラッグ可能であることを示すカーソル */
+  font-size: 0.875rem; /* 少し小さめのフォント */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid #e0e0e0;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
+
 .modalQuestionItem:hover {
-    background-color: #e5e7eb; /* hover:bg-gray-200 */
+  background-color: #e9e9e9;
+}
+
+/* ドラッグ中のスタイル */
+.dragging {
+  opacity: 0.7;
+  background-color: #d0e0f0; /* ドラッグ中とわかる背景色 */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  cursor: grabbing;
 }
 
 /* 問題がない場合 */

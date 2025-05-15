@@ -1,266 +1,377 @@
 /* src/SettingsPage.module.css */
 
-.container {
-  padding: 1.5rem; /* p-6 */
-  max-width: 48rem; /* max-w-3xl */
-  margin-left: auto;
-  margin-right: auto;
-  background-color: white;
-  border-radius: 0.75rem; /* rounded-xl */
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); /* shadow-md */
-  border: 1px solid #e5e7eb; /* border-gray-200 */
+.settingsPage {
+  padding: 20px;
+  max-width: 900px;
+  margin: 0 auto;
+  background-color: #f9fafb; /* Light gray background */
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-.title {
-  font-size: 1.25rem; /* text-xl */
-  font-weight: 600; /* font-semibold */
-  color: #1f2937; /* text-gray-800 */
-  margin-bottom: 1.5rem; /* mb-6 */
+.mainTitle {
+  font-size: 2rem; /* 32px */
+  font-weight: 600;
+  color: #1f2937; /* Darker gray */
+  margin-bottom: 25px;
   display: flex;
   align-items: center;
+  border-bottom: 1px solid #e5e7eb; /* Light border */
+  padding-bottom: 15px;
 }
 
-.titleIcon {
-  margin-right: 0.5rem; /* mr-2 */
-  color: #6366f1; /* text-indigo-500 */
+.pageIcon {
+  margin-right: 12px;
+  color: #4f46e5; /* Indigo */
+}
+
+.icon {
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.iconSmall {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 .section {
-  margin-top: 2rem; /* mt-8 */
-  padding-top: 1.5rem; /* pt-6 */
-  border-top: 1px solid #e5e7eb; /* border-t */
+  margin-bottom: 35px;
+  padding: 20px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .sectionTitle {
-  font-size: 1rem; /* text-base */
-  font-weight: 600; /* font-semibold */
-  color: #374151; /* text-gray-700 */
-  margin-bottom: 1rem; /* mb-4 */
+  font-size: 1.5rem; /* 24px */
+  font-weight: 500;
+  color: #374151; /* Medium gray */
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
 }
 
-.description {
-  font-size: 0.875rem; /* text-sm */
-  color: #6b7280; /* text-gray-500 */
-  margin-bottom: 1rem; /* mb-4 */
+.subSectionTitle {
+  font-size: 1.25rem; /* 20px */
+  font-weight: 500;
+  color: #4b5563; /* Slightly lighter gray */
+  margin-top: 20px;
+  margin-bottom: 15px;
 }
 
-.resetButton {
-  padding: 0.625rem 1.25rem; /* py-2.5 px-5 */
-  background-color: #ef4444; /* bg-red-500 */
-  color: white;
-  font-weight: 500; /* font-medium */
-  font-size: 0.875rem; /* text-sm */
+.subSubSectionTitle {
+  font-size: 1.1rem; /* ~17.5px */
+  font-weight: 500;
+  color: #4b5563;
+  margin-top: 15px;
+  margin-bottom: 10px;
+}
+
+
+.buttonGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.exportButtonsContainerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* Responsive grid */
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.button {
+  padding: 10px 18px;
   border: none;
-  border-radius: 0.5rem; /* rounded-lg */
+  border-radius: 6px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  font-size: 0.95rem; /* ~15px */
+  font-weight: 500;
   display: inline-flex;
   align-items: center;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  justify-content: center;
+  transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  text-decoration: none; /* for <a> tags if used as buttons */
+  color: #ffffff;
 }
 
-.resetButton:hover {
-  background-color: #dc2626; /* hover:bg-red-600 */
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-.resetButton svg {
-  margin-right: 0.5rem; /* mr-2 */
+.exportButton {
+  background-color: #4f46e5; /* Indigo */
+}
+.exportButton:hover:not(:disabled) {
+  background-color: #4338ca; /* Darker Indigo */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-/* 新規追加スタイル */
+.csvExportButton {
+  background-color: #059669; /* Emerald */
+}
+.csvExportButton:hover:not(:disabled) {
+  background-color: #047857; /* Darker Emerald */
+}
+
+.historyCsvExportButton {
+  background-color: #d97706; /* Amber */
+}
+.historyCsvExportButton:hover:not(:disabled) {
+  background-color: #b45309; /* Darker Amber */
+}
+
+.idListCsvExportButton {
+  background-color: #6b7280; /* Gray */
+}
+.idListCsvExportButton:hover:not(:disabled) {
+  background-color: #4b5563; /* Darker Gray */
+}
+
+.fullCsvExportButton { /* 新しい全データCSVエクスポートボタンのスタイル */
+  background-color: #8b5cf6; /* Violet */
+}
+.fullCsvExportButton:hover:not(:disabled) {
+  background-color: #7c3aed; /* Darker Violet */
+}
+
+.importContainer {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background-color: #f9fafb; /* Light gray background for import section */
+}
+
+.importButton {
+  background-color: #2563eb; /* Blue */
+  margin-top: 10px;
+}
+.importButton:hover:not(:disabled) {
+  background-color: #1d4ed8; /* Darker Blue */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.importHistoryButton { /* Specific style if needed, inherits from importButton */
+  background-color: #db2777; /* Fuchsia for history import, to make it distinct */
+}
+.importHistoryButton:hover:not(:disabled) {
+  background-color: #be185d; /* Darker Fuchsia */
+}
+
+.importFullDataButton { /* 新しい全データCSVインポートボタンのスタイル */
+  background-color: #16a34a; /* Green */
+}
+.importFullDataButton:hover:not(:disabled) {
+  background-color: #15803d; /* Darker Green */
+}
+
+.fileInput {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border: 1px solid #d1d5db; /* Gray border */
+  border-radius: 6px;
+  font-size: 0.9rem;
+  box-sizing: border-box; /* Ensure padding doesn't expand width */
+}
+.fileInput:focus {
+  outline: none;
+  border-color: #4f46e5; /* Indigo on focus */
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.3);
+}
+
+
+.descriptionText,
+.infoText {
+  font-size: 0.95rem;
+  color: #4b5563; /* Medium gray */
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+.infoText {
+  padding: 10px;
+  background-color: #eff6ff; /* Light blue */
+  border-left: 4px solid #2563eb; /* Blue */
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+.infoIcon {
+  color: #2563eb;
+}
+
+
+.warningText {
+  font-size: 0.95rem;
+  color: #92400e; /* Dark Amber text for warnings */
+  background-color: #fffbeb; /* Light Amber background */
+  border: 1px solid #fde68a; /* Amber border */
+  padding: 10px 15px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+}
+.warningIcon {
+  color: #d97706; /* Amber icon */
+}
+
+.warningTextSmall {
+  font-size: 0.85rem;
+  color: #4b5563;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+}
+.warningTextSmall .warningIcon {
+  color: #f59e0b; /* Amber for small warnings */
+}
+
+.criticalWarning {
+  background-color: #fee2e2; /* Light Red background */
+  border-color: #fca5a5; /* Red border */
+  color: #991b1b; /* Dark Red text */
+  font-weight: 500;
+}
+.criticalWarning .warningIcon {
+  color: #ef4444; /* Red icon */
+}
+
+.criticalWarningText { /* For text-only critical warnings, e.g., in reset section */
+  color: #b91c1c; /* Darker red */
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+.criticalWarningText .iconSmall {
+  color: #ef4444; /* Red */
+}
+
+
+.errorMessage,
+.successMessage {
+  padding: 10px 15px;
+  margin-top: 10px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+}
+.errorMessage {
+  background-color: #fee2e2; /* Light Red */
+  color: #991b1b; /* Dark Red */
+  border: 1px solid #fca5a5;
+}
+.successMessage {
+  background-color: #d1fae5; /* Light Green */
+  color: #065f46; /* Dark Green */
+  border: 1px solid #6ee7b7;
+}
+.msgIcon {
+  margin-right: 8px;
+  flex-shrink: 0; /* Prevent icon from shrinking */
+}
+
+
 .resetOption {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 15px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
 }
-
-@media (min-width: 768px) {
+@media (min-width: 768px) { /* On larger screens, align button to the side */
   .resetOption {
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
   }
-  
-  .resetOption > div {
-    flex: 1;
+  .resetOption > div:first-child { /* Text content */
+    flex-grow: 1;
+    margin-right: 20px;
+  }
+  .resetOption > .button { /* Button */
+    flex-shrink: 0;
   }
 }
 
-.resetOptionTitle {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 0.5rem;
+
+.resetButtonMinor {
+  background-color: #f59e0b; /* Amber */
+  color: #fff;
+}
+.resetButtonMinor:hover:not(:disabled) {
+  background-color: #d97706; /* Darker Amber */
+}
+
+.resetButtonMajor {
+  background-color: #ef4444; /* Red */
+  color: #fff;
+}
+.resetButtonMajor:hover:not(:disabled) {
+  background-color: #dc2626; /* Darker Red */
 }
 
 .divider {
-  height: 1px;
-  background-color: #e5e7eb;
   border: none;
-  margin: 1.5rem 0;
+  border-top: 1px solid #e5e7eb; /* Light gray divider */
+  margin-top: 25px;
+  margin-bottom: 25px;
 }
 
-.resetAnswerButton {
-  background-color: #6366f1; /* indigo-500 */
-}
-
-.resetAnswerButton:hover {
-  background-color: #4f46e5; /* indigo-600 */
-}
-
-/* データエクスポート/インポート関連のスタイル */
-.dataOption {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-@media (min-width: 768px) {
-  .dataOption {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-  }
-  
-  .dataOption > div {
-    flex: 1;
-  }
-}
-
-.dataOptionTitle {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 0.5rem;
-}
-
-.importControls {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-
-@media (min-width: 768px) {
-  .importControls {
-    flex-direction: row;
-    align-items: center;
-  }
-}
-
-.fileInput {
-  padding: 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  background-color: white;
-  font-size: 0.875rem;
-  flex-grow: 1;
-}
-
-/* エクスポートボタン */
-.exportButton {
-  padding: 0.625rem 1.25rem;
-  background-color: #4f46e5; /* indigo-600 */
-  color: white;
-  font-weight: 500;
-  font-size: 0.875rem;
+.dividerShort {
   border: none;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  border-top: 1px solid #e5e7eb;
+  margin-top: 15px;
+  margin-bottom: 15px;
 }
 
-.exportButton:hover {
-  background-color: #4338ca; /* indigo-700 */
+/* Ensure consistent icon sizing within buttons */
+.button .icon {
+  width: 18px; /* Adjust as needed */
+  height: 18px; /* Adjust as needed */
 }
 
-.exportButton svg {
-  margin-right: 0.5rem;
+.jsonHistoryExportButton {
+  /* 他のJSONエクスポートボタンとスタイルを合わせるか、必要に応じて調整 */
+  background-color: #4a5568; /* 少し濃いめのグレーなど */
+}
+.jsonHistoryExportButton:hover {
+  background-color: #2d3748;
 }
 
-/* エクスポートボタンのコンテナ */
-.exportButtons {
-  display: flex;
-  flex-direction: column; /* モバイルでは縦並び */
-  gap: 0.75rem; /* ボタン間のスペース */
+.jsonIdListExportButton { /* 新しいスタイル */
+  background-color: #4a5568; /* jsonHistoryExportButton と同じスタイル */
+}
+.jsonIdListExportButton:hover {
+  background-color: #2d3748; /* jsonHistoryExportButton と同じスタイル */
 }
 
-@media (min-width: 768px) { /* md以上で横並び */
-  .exportButtons {
-    flex-direction: row;
-  }
+.jsonQuestionListExportButton { /* 新しいスタイル */
+  background-color: #4a5568; /* 他のJSONエクスポートボタンと同様のスタイル */
+}
+.jsonQuestionListExportButton:hover {
+  background-color: #2d3748; /* 他のJSONエクスポートボタンと同様のスタイル */
 }
 
-/* CSVエクスポートボタンの個別スタイル (もしあれば) */
-.csvExportButton {
-  background-color: #059669; /* emerald-600 などを想定 */
+.jsonHistoryImportButton {
+  background-color: #3b82f6; /* Blue 600 - 標準的なインポートアクションに適した色 */
+}
+.jsonHistoryImportButton:hover:not(:disabled) {
+  background-color: #2563eb; /* Blue 700 */
 }
 
-.csvExportButton:hover {
-  background-color: #047857; /* emerald-700 などを想定 */
+.jsonQuestionListImportButton { /* 新しいスタイル (問題リストJSONインポート用) */
+  background-color: #3b82f6; 
 }
-
-/* インポートボタン */
-.importButton {
-  padding: 0.625rem 1.25rem;
-  background-color: #10b981; /* emerald-500 */
-  color: white;
-  font-weight: 500;
-  font-size: 0.875rem;
-  border: none;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  white-space: nowrap;
-}
-
-.importButton:hover {
-  background-color: #059669; /* emerald-600 */
-}
-
-.importButtonDisabled {
-  background-color: #9ca3af; /* gray-400 */
-  cursor: not-allowed;
-}
-
-.importButtonDisabled:hover {
-  background-color: #9ca3af; /* hover時も同じ色 */
-}
-
-.importButton svg {
-  margin-right: 0.5rem;
-}
-
-/* エラーメッセージ */
-.errorMessage {
-  margin-top: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  background-color: #fee2e2; /* red-100 */
-  border: 1px solid #fecaca; /* red-200 */
-  border-radius: 0.375rem;
-  color: #b91c1c; /* red-700 */
-  font-size: 0.875rem;
-  display: flex;
-  align-items: center;
-}
-
-/* 成功メッセージ */
-.successMessage {
-  margin-top: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  background-color: #d1fae5; /* green-100 */
-  border: 1px solid #a7f3d0; /* green-200 */
-  border-radius: 0.375rem;
-  color: #065f46; /* green-800 */
-  font-size: 0.875rem;
-  display: flex;
-  align-items: center;
+.jsonQuestionListImportButton:hover:not(:disabled) {
+  background-color: #2563eb; 
 }

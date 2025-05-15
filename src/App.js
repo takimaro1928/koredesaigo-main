@@ -24,11 +24,13 @@ import {
   saveSubjects,
   loadAnswerHistory,
   addAnswerHistory,
+  saveAnswerHistory, // この行を追加
   clearAllData as dbClearAllData,
   clearAnswerStatus as dbClearAnswerStatus,
   saveSetting,
   loadSetting,
   STORE_HISTORY, // handleDataImport で使用
+  STORE_SUBJECTS, // handleFullDataCsvImport で使用
 } from './db';
 
 // 問題生成関数
@@ -37,14 +39,15 @@ function generateQuestions(prefix, start, end) {
     for (let i = start; i <= end; i++) {
         const today = new Date();
         const nextDate = new Date();
-        nextDate.setDate(today.getDate() + Math.floor(Math.random() * 30));
+        nextDate.setDate(today.getDate() + Math.floor(Math.random() * 30)); // nextDateのランダム性は維持
         questions.push({
             id: `${prefix}${i}`,
             number: i,
             correctRate: Math.floor(Math.random() * 100),
             lastAnswered: new Date(today.getTime() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000),
             nextDate: nextDate.toISOString(),
-            interval: ['1日', '3日', '7日', '14日', '1ヶ月', '2ヶ月'][Math.floor(Math.random() * 6)],
+            // 復習間隔の候補から '2ヶ月' を削除
+            interval: ['1日', '3日', '7日', '14日', '1ヶ月'][Math.floor(Math.random() * 5)],
             answerCount: Math.floor(Math.random() * 10),
             understanding: '理解○',
             previousUnderstanding: null,
@@ -57,8 +60,8 @@ const generateInitialData = () => {
     console.log("generateInitialData が呼ばれました (サンプルデータ生成)");
     const pastExamSubjectPrefixMap = { "企業経営理論": "企経", "運営管理": "運営", "経済学・経済政策": "経済", "経営情報システム": "情報", "経営法務": "法務", "中小企業経営・政策": "中小", };
     const subjects = [
-        // --- 科目 1: 経営管理論 ---
-        { id: 1, subjectId: 1, subjectName: "経営管理論", chapters: [
+        // --- 科目 1: 企業経営理論 ---
+        { id: 1, subjectId: 1, subjectName: "企業経営理論", chapters: [
             { id: 101, chapterId: 101, chapterName: "企業活動と経営戦略の全体概要 Q1-1", questions: generateQuestions('1-1-', 1, 17) },
             { id: 102, chapterId: 102, chapterName: "経営戦略と経営計画 Q1-2", questions: generateQuestions('1-2-', 1, 27) },
             { id: 103, chapterId: 103, chapterName: "経営組織とリーダーシップ Q1-3", questions: generateQuestions('1-3-', 1, 14) },
@@ -103,11 +106,54 @@ const availableWidgets = [
 // --- デフォルトで表示するウィジェット ---
 const defaultActiveWidgets = ['understanding', 'progress', 'weakpoints', 'upcoming', 'calendar'];
 
+// ヘルパー関数 (Appコンポーネントの外)
+const parseCsvLineToArray = (line) => {
+    const values = [];
+    let currentField = '';
+    let inQuotes = false;
+    for (let j = 0; j < line.length; j++) {
+        const char = line[j];
+        if (char === '"') {
+            if (inQuotes && j + 1 < line.length && line[j + 1] === '"') {
+                currentField += '"'; 
+                j++; 
+            } else {
+                inQuotes = !inQuotes; 
+            }
+        } else if (char === ',' && !inQuotes) { 
+            values.push(currentField); 
+            currentField = '';
+        } else {
+            currentField += char; 
+        }
+    }
+    values.push(currentField); 
+    return values.map(v => v.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+};
+
+// --- UUID v4 生成ヘルパー ---
+const uuidv4 = () => {
+  if (crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // フォールバック: より単純なID生成 (RFC4122準拠ではないが、ユニーク性はそこそこ期待できる)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
 // --- App コンポーネント本体 ---
 function App() {
   // --- State定義 ---
-  const [subjects, setSubjects] = useState([]);
-  const [answerHistory, setAnswerHistory] = useState([]);
+  const [subjects, setSubjects] = useState(() => {
+    const savedSubjects = localStorage.getItem('studySchedulerData');
+    return savedSubjects ? JSON.parse(savedSubjects) : [];
+  });
+  const [answerHistory, setAnswerHistory] = useState(() => {
+    const savedAnswerHistory = localStorage.getItem('answerHistory');
+    return savedAnswerHistory ? JSON.parse(savedAnswerHistory) : [];
+  });
   const [activeTab, setActiveTab] = useState('today');
   const [expandedSubjects, setExpandedSubjects] = useState({});
   const [expandedChapters, setExpandedChapters] = useState({});
@@ -289,7 +335,23 @@ function App() {
           return { ...chapter, questions: chapter.questions.map(q => {
             if (q?.id === questionId) {
               const question = { ...q }; const previousUnderstanding = question.understanding; const today = new Date(); let nextDate = new Date(); let newInterval = '';
-              if (understanding.startsWith('曖昧△')) { nextDate.setDate(today.getDate() + 8); newInterval = '8日'; } else if (isCorrect && understanding === '理解○') { const isFirstCorrect = question.understanding === '未学習'; const baseInterval = isFirstCorrect ? '1日' : (previousUnderstanding?.startsWith('曖昧△') ? '14日' : (question.interval || '1日')); switch(baseInterval) { case '1日': nextDate.setDate(today.getDate() + 3); newInterval = '3日'; break; case '3日': nextDate.setDate(today.getDate() + 7); newInterval = '7日'; break; case '7日': nextDate.setDate(today.getDate() + 14); newInterval = '14日'; break; case '14日': nextDate.setMonth(today.getMonth() + 1); newInterval = '1ヶ月'; break; case '1ヶ月': nextDate.setMonth(today.getMonth() + 2); newInterval = '2ヶ月'; break; default: nextDate.setMonth(today.getMonth() + 2); newInterval = '2ヶ月'; break; } } else { nextDate.setDate(today.getDate() + 1); newInterval = '1日'; }
+              if (understanding.startsWith('曖昧△')) { nextDate.setDate(today.getDate() + 8); newInterval = '8日'; } 
+              else if (isCorrect && understanding === '理解○') { 
+                const isFirstCorrect = question.understanding === '未学習'; 
+                const baseInterval = isFirstCorrect ? '1日' : (previousUnderstanding?.startsWith('曖昧△') ? '14日' : (question.interval || '1日')); 
+                switch(baseInterval) { 
+                  case '1日': nextDate.setDate(today.getDate() + 3); newInterval = '3日'; break; 
+                  case '3日': nextDate.setDate(today.getDate() + 7); newInterval = '7日'; break; 
+                  case '7日': nextDate.setDate(today.getDate() + 14); newInterval = '14日'; break; 
+                  case '14日': nextDate.setMonth(today.getMonth() + 1); newInterval = '1ヶ月'; break; 
+                  // '1ヶ月' の次は '1ヶ月' のまま (最大1ヶ月)
+                  case '1ヶ月': nextDate.setMonth(today.getMonth() + 1); newInterval = '1ヶ月'; break; 
+                  // default の場合も最大 '1ヶ月'
+                  default: nextDate.setMonth(today.getMonth() + 1); newInterval = '1ヶ月'; break; 
+                } 
+              } else { 
+                nextDate.setDate(today.getDate() + 1); newInterval = '1日'; 
+              }
               updatedQuestionData = { ...question, lastAnswered: today, nextDate: nextDate.toISOString(), interval: newInterval, answerCount: (question.answerCount || 0) + 1, understanding: understanding, previousUnderstanding: previousUnderstanding, correctRate: calculateCorrectRate(question, isCorrect) };
               return updatedQuestionData;
             } return q; }) }; }) };
@@ -495,18 +557,18 @@ function App() {
             if (chapter.questions && Array.isArray(chapter.questions)) {
               chapter.questions.forEach(question => {
                 flatQuestions.push({
-                  SubjectName: subjectName,
-                  ChapterName: chapterName,
-                  QuestionID: question.id,
-                  QuestionNumber: question.number, // Assuming 'number' exists, adjust if not
-                  CorrectRate: question.correctRate,
-                  LastAnsweredDate: question.lastAnswered ? new Date(question.lastAnswered).toISOString().split('T')[0] : '', // YYYY-MM-DD
-                  NextScheduledDate: question.nextDate ? new Date(question.nextDate).toISOString().split('T')[0] : '', // YYYY-MM-DD
-                  Interval: question.interval,
-                  AnswerCount: question.answerCount,
-                  Understanding: question.understanding,
-                  Comment: question.comment || '',
-                  // Add other question properties if needed
+                  // 日本語キーでデータ構造を定義
+                  "科目名": subjectName,
+                  "章名": chapterName,
+                  "問題ID": question.id,
+                  "問題番号": question.number,
+                  "正解率": question.correctRate,
+                  "最終解答日": question.lastAnswered ? new Date(question.lastAnswered).toISOString().split('T')[0] : '',
+                  "次回予定日": question.nextDate ? new Date(question.nextDate).toISOString().split('T')[0] : '',
+                  "復習間隔": question.interval,
+                  "解答回数": question.answerCount,
+                  "理解度": question.understanding,
+                  "コメント": question.comment || '',
                 });
               });
             }
@@ -520,6 +582,7 @@ function App() {
         return false;
       }
       
+      // ヘッダー行も日本語になる (Object.keys が日本語キーを返すため)
       const header = Object.keys(flatQuestions[0]).map(escapeCsvField).join(',');
       const rows = flatQuestions.map(row =>
         Object.values(row).map(val => escapeCsvField(val)).join(',')
@@ -549,7 +612,263 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [escapeCsvField]); // loadSubjects は依存配列に不要 (useCallbackの第二引数)
+  }, [escapeCsvField, loadSubjects]); // loadSubjects を依存配列に追加
+
+  // --- 解答履歴CSVデータエクスポート ---
+  const handleAnswerHistoryCsvExport = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const historyToExport = await loadAnswerHistory();
+      const subjects = await loadSubjects();
+
+      if (!historyToExport || historyToExport.length === 0) {
+        alert("エクスポートする解答履歴がありません。");
+        setIsLoading(false);
+        return false;
+      }
+
+      const questionInfoMap = new Map();
+      (subjects || []).forEach(subject => {
+        const subjectName = subject.subjectName || subject.name || 'Unknown Subject';
+        if (subject.chapters && Array.isArray(subject.chapters)) {
+          subject.chapters.forEach(chapter => {
+            const chapterName = chapter.chapterName || chapter.name || 'Unknown Chapter';
+            if (chapter.questions && Array.isArray(chapter.questions)) {
+              chapter.questions.forEach(question => {
+                if (question && question.id) {
+                  questionInfoMap.set(question.id, { subjectName, chapterName });
+                }
+              });
+            }
+          });
+        }
+      });
+
+      // 日本語ヘッダーの順序を定義
+      const headerOrder = ['履歴ID', '問題ID', '科目名', '章名', '正誤', '理解度']; // '解答日時' を削除
+      const headerString = headerOrder.map(escapeCsvField).join(',');
+
+      const rows = historyToExport.map(record => {
+        const qInfo = questionInfoMap.get(record.questionId) || { subjectName: 'N/A', chapterName: 'N/A' };
+        const rowData = {
+          '履歴ID': record.id,
+          '問題ID': record.questionId,
+          '科目名': qInfo.subjectName,
+          '章名': qInfo.chapterName,
+          // '解答日時': record.timestamp ? new Date(record.timestamp).toISOString() : '', // 削除
+          '正誤': typeof record.isCorrect === 'boolean' ? (record.isCorrect ? "正解" : "不正解") : '',
+          '理解度': record.understanding,
+        };
+        return headerOrder.map(fieldKey => escapeCsvField(rowData[fieldKey])).join(',');
+      });
+
+      const csvString = `${headerString}\n${rows.join('\n')}`;
+      
+      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.download = `study-scheduler-history-${dateStr}.csv`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      console.log("Answer history CSV Data exported.");
+      alert("解答履歴データのCSVエクスポートが完了しました。");
+      return true;
+
+    } catch (error) {
+      console.error("解答履歴CSVエクスポート処理中にエラー:", error);
+      alert(`解答履歴データのCSVエクスポート中にエラーが発生しました: ${error.message}`);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [escapeCsvField, loadAnswerHistory, loadSubjects]);
+
+  // --- 問題IDのみCSVデータエクスポート ---
+  const handleQuestionIdOnlyCsvExport = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const subjectsToExport = await loadSubjects();
+      if (!subjectsToExport || subjectsToExport.length === 0) {
+        alert("エクスポートする問題がありません。");
+        setIsLoading(false);
+        return false;
+      }
+
+      const questionIds = [];
+      subjectsToExport.forEach(subject => {
+        if (subject.chapters && Array.isArray(subject.chapters)) {
+          subject.chapters.forEach(chapter => {
+            if (chapter.questions && Array.isArray(chapter.questions)) {
+              chapter.questions.forEach(question => {
+                if (question && question.id) {
+                  questionIds.push(question.id);
+                }
+              });
+            }
+          });
+        }
+      });
+
+      if (questionIds.length === 0) {
+        alert("エクスポート対象の問題IDが見つかりませんでした。");
+        setIsLoading(false);
+        return false;
+      }
+      
+      const header = "QuestionID";
+      const rows = questionIds.map(id => escapeCsvField(id)); // 各IDをエスケープ
+      const csvString = `${header}\n${rows.join('\n')}`;
+      
+      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.download = `study-scheduler-question-ids-${dateStr}.csv`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      console.log("Question ID list CSV Data exported.");
+      alert("問題IDリストのCSVエクスポートが完了しました。");
+      return true;
+
+    } catch (error) {
+      console.error("問題IDリストCSVエクスポート処理中にエラー:", error);
+      alert(`問題IDリストのCSVエクスポート中にエラーが発生しました: ${error.message}`);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [escapeCsvField, loadSubjects]); // loadSubjectsも依存配列に追加
+
+  // --- 全データCSVエクスポート ---
+  const handleFullDataCsvExport = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      // 1. 問題データのCSVを生成
+      const subjectsToExport = await loadSubjects();
+      let questionsCsvString = "### QUESTIONS_DATA_START ###\n";
+      if (subjectsToExport && subjectsToExport.length > 0) {
+        const flatQuestions = [];
+        subjectsToExport.forEach(subject => {
+          const subjectName = subject.subjectName || subject.name || 'Unknown Subject';
+          if (subject.chapters && Array.isArray(subject.chapters)) {
+            subject.chapters.forEach(chapter => {
+              const chapterName = chapter.chapterName || chapter.name || 'Unknown Chapter';
+              if (chapter.questions && Array.isArray(chapter.questions)) {
+                chapter.questions.forEach(question => {
+                  flatQuestions.push({
+                    // ここを日本語キーにする (データ構造は元の英語キーのまま)
+                    "科目名": subjectName,
+                    "章名": chapterName,
+                    "問題ID": question.id,
+                    "問題番号": question.number,
+                    "正解率": question.correctRate,
+                    "最終解答日": question.lastAnswered ? new Date(question.lastAnswered).toISOString().split('T')[0] : '',
+                    "次回予定日": question.nextDate ? new Date(question.nextDate).toISOString().split('T')[0] : '',
+                    "復習間隔": question.interval,
+                    "解答回数": question.answerCount,
+                    "理解度": question.understanding,
+                    "コメント": question.comment || '',
+                  });
+                });
+              }
+            });
+          }
+        });
+        if (flatQuestions.length > 0) {
+          // ヘッダー行も日本語にする
+          const questionHeader = Object.keys(flatQuestions[0]).map(escapeCsvField).join(',');
+          const questionRows = flatQuestions.map(row =>
+            Object.values(row).map(val => escapeCsvField(val)).join(',')
+          );
+          questionsCsvString += `${questionHeader}\n${questionRows.join('\n')}`;
+        } else {
+          questionsCsvString += "(問題データがありません)";
+        }
+      } else {
+        questionsCsvString += "(問題データがありません)";
+      }
+      questionsCsvString += "\n### QUESTIONS_DATA_END ###\n";
+
+      // 2. 解答履歴データのCSVを生成
+      const historyToExport = await loadAnswerHistory();
+      let historyCsvString = "\n### ANSWER_HISTORY_DATA_START ###\n";
+      if (historyToExport && historyToExport.length > 0) {
+        const questionInfoMap = new Map();
+        (subjectsToExport || []).forEach(subject => { // subjectsToExportがnullの場合も考慮
+          const subjectName = subject.subjectName || subject.name || 'Unknown Subject';
+          if (subject.chapters && Array.isArray(subject.chapters)) {
+            subject.chapters.forEach(chapter => {
+              const chapterName = chapter.chapterName || chapter.name || 'Unknown Chapter';
+              if (chapter.questions && Array.isArray(chapter.questions)) {
+                chapter.questions.forEach(question => {
+                  if (question && question.id) {
+                    questionInfoMap.set(question.id, { subjectName, chapterName });
+                  }
+                });
+              }
+            });
+          }
+        });
+
+        // 日本語ヘッダーの順序を定義
+        const historyHeaderOrder = ['履歴ID', '問題ID', '科目名', '章名', '正誤', '理解度']; // '解答日時' を削除
+        const historyHeaderString = historyHeaderOrder.map(escapeCsvField).join(',');
+        
+        const historyRows = historyToExport.map(record => {
+          const qInfo = questionInfoMap.get(record.questionId) || { subjectName: 'N/A', chapterName: 'N/A' };
+          const rowData = {
+            "履歴ID": record.id,
+            "問題ID": record.questionId,
+            "科目名": qInfo.subjectName,
+            "章名": qInfo.chapterName,
+            // "解答日時": record.timestamp ? new Date(record.timestamp).toISOString() : '', // 削除
+            "正誤": typeof record.isCorrect === 'boolean' ? (record.isCorrect ? "正解" : "不正解") : '',
+            "理解度": record.understanding,
+          };
+          return historyHeaderOrder.map(field => escapeCsvField(rowData[field])).join(',');
+        });
+        historyCsvString += `${historyHeaderString}\n${historyRows.join('\n')}`;
+      } else {
+        historyCsvString += "(解答履歴データがありません)";
+      }
+      historyCsvString += "\n### ANSWER_HISTORY_DATA_END ###";
+
+      // 3. 結合してダウンロード
+      const fullCsvString = questionsCsvString + historyCsvString;
+      const blob = new Blob([fullCsvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.download = `full_backup_data-${dateStr}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      console.log("Full CSV Data exported.");
+      alert("全データのCSVエクスポートが完了しました。");
+      return true;
+
+    } catch (error) {
+      console.error("全データCSVエクスポート処理中にエラー:", error);
+      alert(`全データのCSVエクスポート中にエラーが発生しました: ${error.message}`);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [escapeCsvField, loadSubjects, loadAnswerHistory, setIsLoading]); // 依存配列を修正
 
   // --- CSVデータインポート ---
   const handleCsvImportData = useCallback(async (csvString) => {
@@ -558,6 +877,40 @@ function App() {
       return false;
     }
     setIsLoading(true);
+
+    // ヘッダー名定義 (英語をキーとし、日本語エイリアスを配列で持つ)
+    // これは全データインポートで定義したものと同様の構造
+    const questionHeaderAliases = {
+      SubjectName: ["科目名"],
+      ChapterName: ["章名"],
+      QuestionID: ["問題ID"],
+      QuestionNumber: ["問題番号"],
+      CorrectRate: ["正解率"],
+      LastAnsweredDate: ["最終解答日"],
+      NextScheduledDate: ["次回予定日"],
+      Interval: ["復習間隔"],
+      AnswerCount: ["解答回数"],
+      Understanding: ["理解度"],
+      Comment: ["コメント"],
+    };
+
+    // CSVヘッダーを解析し、標準名(英語)へのマッピングを作成
+    const getQuestionHeaderMapping = (csvHeaderRow) => {
+      const parsedCsvHeader = parseCsvLineToArray(csvHeaderRow);
+      const mapping = {};
+      parsedCsvHeader.forEach((csvColName, index) => {
+        let normalizedName = csvColName; // デフォルトはCSVの列名そのまま
+        for (const [stdName, aliases] of Object.entries(questionHeaderAliases)) {
+          if (csvColName === stdName || aliases.includes(csvColName)) {
+            normalizedName = stdName; // 標準名に変換
+            break;
+          }
+        }
+        mapping[index] = normalizedName; // マッピングは {columnIndex: normalizedName}
+      });
+      return mapping; // 例: {0: 'SubjectName', 1: 'ChapterName', ...}
+    };
+
     try {
       const lines = csvString.split(/\r\n|\n/);
       if (lines.length < 2) {
@@ -566,56 +919,40 @@ function App() {
         return false;
       }
 
-      // ヘッダーをパース (簡易的なエスケープ解除)
-      const header = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
-      const expectedHeader = ['SubjectName', 'ChapterName', 'QuestionID', 'QuestionNumber', 'CorrectRate', 'LastAnsweredDate', 'NextScheduledDate', 'Interval', 'AnswerCount', 'Understanding', 'Comment'];
-      // ヘッダーの検証 (順序も含めて一致するか)
-      if (header.length !== expectedHeader.length || !header.every((h, i) => h === expectedHeader[i])) {
-        alert(`CSVのヘッダーが不正です。期待されるヘッダー: ${expectedHeader.join(',')}`);
-        console.error("Invalid CSV header. Expected:", expectedHeader, "Got:", header);
+      const headerMapping = getQuestionHeaderMapping(lines[0]);
+      const mappedHeaderValues = Object.values(headerMapping);
+
+      // 期待される標準英語ヘッダー (インポートロジックのキーとして使用)
+      const expectedStdHeader = ['SubjectName', 'ChapterName', 'QuestionID', 'QuestionNumber', 'CorrectRate', 'LastAnsweredDate', 'NextScheduledDate', 'Interval', 'AnswerCount', 'Understanding', 'Comment'];
+      
+      // 必須ヘッダーがマッピングによって全て見つかるか検証
+      const requiredStdHeaders = ['SubjectName', 'ChapterName', 'QuestionID'];
+      if (!requiredStdHeaders.every(reqHdr => mappedHeaderValues.includes(reqHdr))){
+        alert(`CSVのヘッダーに必要な項目（科目名, 章名, 問題IDのいずれか）が見つかりません。現在のヘッダーから認識できた項目: ${mappedHeaderValues.join(', ')}`);
         setIsLoading(false);
         return false;
       }
 
-      const importedQuestionsData = []; // ここで questionData を貯める
-      const chapterQuestionCounters = new Map(); // 章ごとの問題カウンター
+      const importedQuestionsData = [];
+      const chapterQuestionCounters = new Map();
 
       for (let i = 1; i < lines.length; i++) {
-        if (lines[i].trim() === '') continue; // 空行はスキップ
+        if (lines[i].trim() === '') continue;
         
-        const values = [];
-        let currentField = '';
-        let inQuotes = false;
-        for (let j = 0; j < lines[i].length; j++) {
-          const char = lines[i][j];
-          if (char === '"') {
-            if (inQuotes && j + 1 < lines[i].length && lines[i][j + 1] === '"') {
-              currentField += '"'; // エスケープされたダブルクォート ""
-              j++; // 次の " をスキップ
-            } else {
-              inQuotes = !inQuotes; // 通常のダブルクォート (フィールドの開始/終了)
-            }
-          } else if (char === ',' && !inQuotes) { // フィールド区切り文字 (ダブルクォート外)
-            values.push(currentField.trim());
-            currentField = '';
-          } else {
-            currentField += char; // 通常の文字
-          }
-        }
-        values.push(currentField.trim()); // 行の最後のフィールドを追加
-
-        if (values.length !== header.length) {
-          console.warn(`Skipping line ${i + 1}: Number of values (${values.length}) does not match header length (${header.length}). Line: ${lines[i]}`);
-          continue;
-        }
-
+        const values = parseCsvLineToArray(lines[i]); // parseCsvLineToArray を使う
         const rawQuestionData = {};
-        header.forEach((col, index) => {
-          const value = values[index];
-          rawQuestionData[col] = typeof value === 'string' ? value.trim().replace(/^"|"$/g, '').replace(/""/g, '"') : '';
+        // headerMapping を使って、CSVの列indexから標準名にデータを割り当てる
+        Object.entries(headerMapping).forEach(([colIndex, normalizedName]) => {
+          if (values[colIndex] !== undefined) {
+            rawQuestionData[normalizedName] = values[colIndex];
+          }
         });
+
+        if (!rawQuestionData.SubjectName || !rawQuestionData.ChapterName || !rawQuestionData.QuestionID) {
+           console.warn(`Skipping line ${i + 1}: SubjectName, ChapterName, or QuestionID is missing.`);
+           continue;
+        }
         
-        // QuestionNumber の自動採番ロジック
         let questionNumber = parseInt(rawQuestionData.QuestionNumber, 10);
         if (isNaN(questionNumber) || questionNumber <= 0) {
           const chapterKey = `${rawQuestionData.SubjectName}___${rawQuestionData.ChapterName}`;
@@ -623,7 +960,7 @@ function App() {
           questionNumber = currentCounter + 1;
           chapterQuestionCounters.set(chapterKey, questionNumber);
         }
-        rawQuestionData.ProcessedQuestionNumber = questionNumber; // 処理後の番号を保持
+        rawQuestionData.ProcessedQuestionNumber = questionNumber;
 
         importedQuestionsData.push(rawQuestionData);
       }
@@ -634,23 +971,19 @@ function App() {
         return false;
       }
 
-      // 現在の科目データをロード
       let currentSubjects = await loadSubjects();
       const subjectMap = new Map(currentSubjects.map(s => [s.subjectName || s.name, s]));
 
-      importedQuestionsData.forEach(iq => { // importedQuestionsData を使う
+      importedQuestionsData.forEach(iq => {
         const subjectName = iq.SubjectName;
         const chapterName = iq.ChapterName;
         const questionId = iq.QuestionID;
 
         let subject = subjectMap.get(subjectName);
         if (!subject) {
+          const newSubId = Date.now().toString(36) + Math.random().toString(36).substring(2);
           subject = {
-            id: Date.now().toString() + Math.random().toString(), // 簡易ID
-            subjectId: Date.now().toString() + Math.random().toString(),
-            name: subjectName,
-            subjectName: subjectName,
-            chapters: []
+            id: newSubId, subjectId: newSubId, name: subjectName, subjectName: subjectName, chapters: []
           };
           currentSubjects.push(subject);
           subjectMap.set(subjectName, subject);
@@ -659,12 +992,9 @@ function App() {
 
         let chapter = subject.chapters.find(c => (c.chapterName || c.name) === chapterName);
         if (!chapter) {
+          const newChapId = Date.now().toString(36) + Math.random().toString(36).substring(2);
           chapter = {
-            id: Date.now().toString() + Math.random().toString(), // 簡易ID
-            chapterId: Date.now().toString() + Math.random().toString(),
-            name: chapterName,
-            chapterName: chapterName,
-            questions: []
+            id: newChapId, chapterId: newChapId, name: chapterName, chapterName: chapterName, questions: []
           };
           subject.chapters.push(chapter);
         }
@@ -673,25 +1003,25 @@ function App() {
         let question = chapter.questions.find(q => q.id === questionId);
         const newQuestionData = {
           id: questionId,
-          number: iq.ProcessedQuestionNumber, // 自動採番またはCSV指定の番号
+          number: iq.ProcessedQuestionNumber,
           correctRate: parseInt(iq.CorrectRate, 10) || 0,
           lastAnswered: iq.LastAnsweredDate ? new Date(iq.LastAnsweredDate) : null,
-          nextDate: iq.NextScheduledDate ? new Date(iq.NextScheduledDate).toISOString() : null, // DB保存はISO文字列
+          nextDate: iq.NextScheduledDate ? new Date(iq.NextScheduledDate).toISOString() : null,
           interval: iq.Interval || '1日',
           answerCount: parseInt(iq.AnswerCount, 10) || 0,
-          understanding: iq.Understanding || '理解○',
+          understanding: iq.Understanding || '理解○', // 日本語もそのまま受け入れる
           comment: iq.Comment || '',
         };
 
-        if (question) { // 既存の問題を更新
+        if (question) {
           Object.assign(question, newQuestionData);
-        } else { // 新しい問題を追加
+        } else {
           chapter.questions.push(newQuestionData);
         }
       });
 
       await saveSubjects(currentSubjects);
-      setSubjects(currentSubjects); // UIを更新
+      setSubjects(currentSubjects);
       
       console.log(`CSV Data imported: ${importedQuestionsData.length} questions processed.`);
       alert(`CSVから ${importedQuestionsData.length} 件の問題データを処理しました。`);
@@ -704,33 +1034,666 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [loadSubjects, saveSubjects, setSubjects]); // 依存配列に `loadSubjects` 等を追加
+  }, [loadSubjects, saveSubjects, setSubjects, parseCsvLineToArray]); // 依存関係を修正
+
+  // --- 解答履歴CSVデータインポート ---
+  const handleAnswerHistoryCsvImport = useCallback(async (csvString) => {
+    if (!window.confirm("解答履歴CSVをインポートすると、現在の解答履歴はファイルの内容で【完全に上書き】されます。問題リストは変更されません。この操作は元に戻せません。続行しますか？")) {
+      return { success: false, message: "インポートがキャンセルされました。" };
+    }
+    setIsLoading(true);
+    try {
+      const lines = csvString.split(/\r\n|\n|\r/);
+      if (lines.length < 2) throw new Error("CSVファイルにヘッダー行またはデータ行がありません。");
+
+      const headerLine = lines[0];
+      const dataLines = lines.slice(1).filter(line => line.trim() !== '');
+      if (dataLines.length === 0) throw new Error("CSVファイルにデータがありません。");
+
+      const parsedHeader = parseCsvLineToArray(headerLine, "解答履歴CSV");
+      console.log("Parsed Answer History CSV Header:", parsedHeader);
+
+      const historyHeaderAliases = {
+        "履歴ID": "id",
+        "問題ID": "questionId",
+        // "解答日時": "timestamp", // 削除済み
+        "正誤": "isCorrect",
+        "理解度": "understanding",
+        "科目名": "subjectName", 
+        "章名": "chapterName",   
+        "HistoryID": "id",
+        "QuestionID": "questionId",
+        // "Timestamp": "timestamp", // 削除済み
+        "IsCorrect": "isCorrect",
+        "Understanding": "understanding",
+        "SubjectName": "subjectName",
+        "ChapterName": "chapterName",
+      };
+      
+      // timestamp を必須から削除
+      const requiredStdHeaders = ["id", "questionId", "isCorrect", "understanding"]; 
+      const headerMap = {};
+      let missingHeaders = [...requiredStdHeaders];
+
+      parsedHeader.forEach((rawHeader, index) => {
+        const header = rawHeader.trim();
+        const stdHeader = historyHeaderAliases[header];
+        if (stdHeader) {
+          headerMap[stdHeader] = index;
+          // 必須ヘッダーから見つかったものを除く
+          if (requiredStdHeaders.includes(stdHeader)) {
+            missingHeaders = missingHeaders.filter(h => h !== stdHeader);
+          }
+        }
+      });
+
+      if (missingHeaders.length > 0) {
+        throw new Error(`解答履歴CSVの必須ヘッダーが不足しています: ${missingHeaders.join(', ')}。最低限、履歴ID, 問題ID, 正誤, 理解度が必要です。`);
+      }
+      
+      const newAnswerHistory = [];
+      for (const [i, line] of dataLines.entries()) {
+        if (!line.trim()) continue;
+        const values = parseCsvLineToArray(line, "解答履歴CSV", parsedHeader.length);
+        
+        let isCorrectValue;
+        const isCorrectStr = values[headerMap.isCorrect]?.trim();
+        if (isCorrectStr === "正解" || isCorrectStr?.toLowerCase() === "true" || isCorrectStr === "1") {
+          isCorrectValue = true;
+        } else if (isCorrectStr === "不正解" || isCorrectStr?.toLowerCase() === "false" || isCorrectStr === "0") {
+          isCorrectValue = false;
+        } else if (isCorrectStr === "" || isCorrectStr === undefined) {
+          isCorrectValue = null; 
+        } else {
+          throw new Error(`解答履歴CSVの${i+1}行目(${i+2}行目)、「正誤」列の値が無効です: 「${isCorrectStr}」。正解、不正解、true、false、1、0、または空欄である必要があります。`);
+        }
+
+        const understandingStr = values[headerMap.understanding]?.trim();
+        let understandingValue;
+        if (understandingStr === "理解した" || understandingStr?.toLowerCase() === "understood") understandingValue = "understood";
+        else if (understandingStr === "まあまあ" || understandingStr?.toLowerCase() === "somewhat") understandingValue = "somewhat";
+        else if (understandingStr === "要復習" || understandingStr?.toLowerCase() === "needs review") understandingValue = "needs review";
+        else if (understandingStr === "" || understandingStr === undefined) understandingValue = ""; 
+        else {
+          throw new Error(`解答履歴CSVの${i+1}行目(${i+2}行目)、「理解度」列の値が無効です: 「${understandingStr}」。理解した、まあまあ、要復習、understood、somewhat、needs review、または空欄である必要があります。`);
+        }
+
+        // timestamp のパースと設定処理は削除 (またはオプションにする)
+        // CSVからはtimestampを読み込まない方針
+
+        const historyEntry = {
+          id: values[headerMap.id]?.trim() || uuidv4(),
+          questionId: values[headerMap.questionId]?.trim(),
+          // timestamp: undefined, // CSVからは設定しない
+          isCorrect: isCorrectValue,
+          understanding: understandingValue,
+        };
+
+        if (!historyEntry.questionId) {
+          throw new Error(`解答履歴CSVの${i+1}行目(${i+2}行目)、「問題ID」が空です。`);
+        }
+        if (!historyEntry.id) { // IDも必須とする
+          throw new Error(`解答履歴CSVの${i+1}行目(${i+2}行目)、「履歴ID」が空です。`);
+        }
+
+        newAnswerHistory.push(historyEntry);
+      }
+
+      // timestamp がないので、ソートは行わない（またはID順など別の基準）
+      await saveAnswerHistory(newAnswerHistory);
+      setAnswerHistory(newAnswerHistory); 
+
+      console.log("Answer history CSV data imported and overwritten.");
+      return { success: true, message: "解答履歴データのインポートと上書きが完了しました。" };
+
+    } catch (error) {
+      console.error("解答履歴CSVインポート処理中にエラー:", error);
+      return { success: false, message: `解答履歴CSVのインポート中にエラーが発生しました: ${error.message}` };
+    } finally {
+      setIsLoading(false);
+    }
+  }, [parseCsvLineToArray, saveAnswerHistory, uuidv4, setIsLoading, setAnswerHistory]); // 依存関係を更新
 
   // --- リマインダー関連のハンドラ関数 ---
-  const handleDismissReminder = useCallback(async () => {
-    try { await saveSetting('reminderDismissedTimestamp', new Date().getTime().toString()); setShowExportReminder(false); console.log("IndexedDB: Reminder dismissed timestamp saved."); } catch (error) { console.error("Error saving reminder dismissal:", error); }
-  }, []);
-  const handleGoToSettings = useCallback(() => { setActiveTab('settings'); setShowExportReminder(false); }, []);
+  const handleReminderDismiss = useCallback(() => {
+    setShowExportReminder(false);
+    setDaysSinceLastExport(null);
+    saveSetting('reminderDismissedTimestamp', new Date().getTime().toString());
+  }, [saveSetting]);
 
-  // --- レイアウト保存用関数 ---
-  const handleLayoutChange = useCallback(async (currentLayout, allLayouts) => {
+  const handleReminderCheck = useCallback(async () => {
     if (isLoading) return;
-    setDashboardLayouts(allLayouts);
-    try { await saveSetting('dashboardLayouts', allLayouts); } catch (error) { console.error("IndexedDB: Error saving dashboard layout:", error); }
-  }, [isLoading]);
+    try {
+      const lastExportTimestamp = await loadSetting('lastExportTimestamp');
+      const reminderDismissedTimestamp = await loadSetting('reminderDismissedTimestamp');
+      const now = new Date().getTime();
+      if (!reminderDismissedTimestamp) {
+        setShowExportReminder(true);
+        setDaysSinceLastExport(null);
+        saveSetting('reminderDismissedTimestamp', now.toString());
+      } else if (now - parseInt(reminderDismissedTimestamp, 10) >= 1000 * 60 * 60 * 24 * 3) {
+        setShowExportReminder(true);
+        setDaysSinceLastExport(Math.floor((now - parseInt(reminderDismissedTimestamp, 10)) / (1000 * 60 * 60 * 24)));
+        saveSetting('reminderDismissedTimestamp', now.toString());
+      } else {
+        setShowExportReminder(false);
+        setDaysSinceLastExport(null);
+      }
+    } catch (error) {
+      console.error("Error checking reminder:", error);
+      setShowExportReminder(true);
+      setDaysSinceLastExport(null);
+    }
+  }, [isLoading, loadSetting, saveSetting]);
 
-  // --- アクティブウィジェット更新関数 ---
-  const updateActiveWidgets = useCallback(async (newActiveWidgetIds) => {
-      if (isLoading) return;
-      setActiveWidgets(newActiveWidgetIds);
-      try { await saveSetting('activeWidgets', newActiveWidgetIds); console.log("IndexedDB: Active widgets saved:", newActiveWidgetIds); } catch (error) { console.error("IndexedDB: Error saving active widgets:", error); }
-  }, [isLoading]);
+  useEffect(() => {
+    handleReminderCheck();
+  }, [handleReminderCheck]);
+
+  // --- ダッシュボードレイアウトの変更 ---
+  const handleDashboardLayoutChange = useCallback((newLayout) => {
+    setDashboardLayouts(newLayout);
+    saveSetting('dashboardLayouts', newLayout);
+  }, [saveSetting]);
+
+  // --- ウィジェットの変更 ---
+  const handleWidgetChange = useCallback((newWidgets) => {
+    setActiveWidgets(newWidgets);
+    saveSetting('activeWidgets', newWidgets);
+  }, [saveSetting]);
+
+  // --- ダッシュボードレイアウトの表示 ---
+  const renderDashboardLayout = useMemo(() => {
+    if (!dashboardLayouts) return null;
+    return (
+      <Dashboard
+        subjects={subjects}
+        answerHistory={answerHistory}
+        activeWidgets={activeWidgets}
+        onLayoutChange={handleDashboardLayoutChange}
+        onWidgetChange={handleWidgetChange}
+      />
+    );
+  }, [dashboardLayouts, subjects, answerHistory, activeWidgets, handleDashboardLayoutChange, handleWidgetChange]);
+
+  // --- 全データCSVインポート ---
+  const handleFullDataCsvImport = useCallback(async (csvString) => {
+    if (!window.confirm("全データCSVをインポートすると、現在のすべての問題データと解答履歴がCSVファイルの内容で【完全に上書き】されます。この操作は元に戻せません。続行しますか？")) {
+      return { success: false, message: "インポートがキャンセルされました。" };
+    }
+    setIsLoading(true);
+
+    // 共通ヘッダーエイリアス (問題データと解答履歴データで共用)
+    const commonHeaderAliases = {
+      SubjectName: ["科目名"],
+      ChapterName: ["章名"],
+      QuestionID: ["問題ID"],
+      QuestionNumber: ["問題番号"],
+      CorrectRate: ["正解率"],
+      LastAnsweredDate: ["最終解答日"],
+      NextScheduledDate: ["次回予定日"],
+      Interval: ["復習間隔"],
+      AnswerCount: ["解答回数"],
+      Understanding: ["理解度"],
+      Comment: ["コメント"],
+      id: ["履歴ID"], // 解答履歴用
+      isCorrect: ["正誤"], // 解答履歴用
+    };
+
+    const getHeaderMapping = (csvHeaderRow, context) => {
+      const parsedCsvHeader = parseCsvLineToArray(csvHeaderRow);
+      const mapping = {};
+      const foundNormalizedHeaders = new Set();
+      parsedCsvHeader.forEach((csvColName, index) => {
+        let normalizedName = null;
+        for (const [stdName, aliases] of Object.entries(commonHeaderAliases)) {
+          if (csvColName === stdName || aliases.includes(csvColName)) {
+            normalizedName = stdName;
+            break;
+          }
+        }
+        if (normalizedName) {
+          if (foundNormalizedHeaders.has(normalizedName) && 
+              !['QuestionID', 'Understanding', 'SubjectName', 'ChapterName'].includes(normalizedName)
+          ) {
+             console.warn(`ヘッダーに重複の可能性がある列名 (${context}): '${csvColName}' は既に '${normalizedName}' にマッピング済みです。`);
+          }
+          mapping[index] = normalizedName;
+          foundNormalizedHeaders.add(normalizedName);
+        } else {
+          console.warn(`不明なヘッダー列 (${context}) '${csvColName}' は無視されます。`);
+        }
+      });
+      return mapping;
+    };
+
+    const parseIsCorrectValue = (value, rowIndex, context) => {
+      if (typeof value === 'string') {
+        const lowerValue = value.toLowerCase().trim();
+        if (lowerValue === "true" || lowerValue === "正解" || lowerValue === "はい" || lowerValue === "1") return true;
+        if (lowerValue === "false" || lowerValue === "不正解" || lowerValue === "いいえ" || lowerValue === "0") return false;
+        if (lowerValue === "") return null;
+        throw new Error(`全データCSV(${context})の${rowIndex}行目、「正誤」列の値が無効です: 「${value}」。正解/不正解、true/false、1/0、または空欄である必要があります。`);
+      }
+      if (value === null || value === undefined) return null;
+      throw new Error(`全データCSV(${context})の${rowIndex}行目、「正誤」列の型が無効です。文字列である必要があります。`);
+    };
+
+    const parseUnderstandingValue = (value, rowIndex, context) => {
+        if (typeof value === 'string') {
+            const trimmedValue = value.trim();
+            if (trimmedValue === "理解した" || trimmedValue.toLowerCase() === "understood") return "understood";
+            if (trimmedValue === "まあまあ" || trimmedValue.toLowerCase() === "somewhat") return "somewhat";
+            if (trimmedValue === "要復習" || trimmedValue.toLowerCase() === "needs review") return "needs review";
+            if (trimmedValue === "") return "";
+            throw new Error(`全データCSV(${context})の${rowIndex}行目、「理解度」列の値が無効です: 「${value}」。理解した/まあまあ/要復習、understood/somewhat/needs review、または空欄である必要があります。`);
+        }
+        if (value === null || value === undefined) return "";
+        throw new Error(`全データCSV(${context})の${rowIndex}行目、「理解度」列の型が無効です。文字列である必要があります。`);
+    };
+
+    try {
+      const questionDataSectionMatch = csvString.match(/### QUESTIONS_DATA_START ###([\s\S]*?)### QUESTIONS_DATA_END ###/);
+      const historyDataSectionMatch = csvString.match(/### ANSWER_HISTORY_DATA_START ###([\s\S]*?)### ANSWER_HISTORY_DATA_END ###/);
+
+      if (!questionDataSectionMatch || !historyDataSectionMatch) {
+        throw new Error("CSVファイルの形式が無効です。必要なデータセクションの区切り (### QUESTIONS_DATA_START ### など) が見つかりません。");
+      }
+
+      const questionCsvContent = questionDataSectionMatch[1].trim();
+      const historyCsvContent = historyDataSectionMatch[1].trim();
+
+      const newSubjects = [];
+      const chapterQuestionCounters = new Map(); 
+
+      if (questionCsvContent && questionCsvContent !== "(問題データがありません)") {
+        const qLines = questionCsvContent.split(/\r\n|\n|\r/).filter(line => line.trim() !== '');
+        if (qLines.length >= 1) { 
+          const qHeaderMapping = getHeaderMapping(qLines[0], "問題データ");
+          const requiredQHeaders = ['SubjectName', 'ChapterName', 'QuestionID']; 
+          if (!requiredQHeaders.every(rh => Object.values(qHeaderMapping).includes(rh))) {
+            throw new Error(`問題データに必要なヘッダー (${requiredQHeaders.join(', ')}) の一部が見つかりません。認識されたヘッダー: ${Object.values(qHeaderMapping).join(', ')}`);
+          }
+
+          const subjectMap = new Map();
+          for (let i = 1; i < qLines.length; i++) {
+            const values = parseCsvLineToArray(qLines[i]);
+            const rawQData = {};
+            Object.entries(qHeaderMapping).forEach(([colIndex, normalizedName]) => {
+              if (values[colIndex] !== undefined) {
+                rawQData[normalizedName] = values[colIndex];
+              }
+            });
+
+            if (!rawQData.SubjectName || !rawQData.ChapterName || !rawQData.QuestionID) {
+              console.warn(`問題データの行 ${i + 1}: 必須項目 (科目名, 章名, 問題ID) が不足しているためスキップします。`);
+              continue;
+            }
+
+            let questionNumber = parseInt(rawQData.QuestionNumber, 10);
+            const chapterKey = `${rawQData.SubjectName}___${rawQData.ChapterName}`;
+            if (isNaN(questionNumber) || questionNumber <= 0) {
+              const currentCounter = chapterQuestionCounters.get(chapterKey) || 0;
+              questionNumber = currentCounter + 1;
+              chapterQuestionCounters.set(chapterKey, questionNumber);
+            }
+
+            let subject = subjectMap.get(rawQData.SubjectName);
+            if (!subject) {
+              const newSubId = Date.now().toString(36) + Math.random().toString(36).substring(2);
+              subject = { id: newSubId, subjectId: newSubId, name: rawQData.SubjectName, subjectName: rawQData.SubjectName, chapters: [] };
+              newSubjects.push(subject);
+              subjectMap.set(rawQData.SubjectName, subject);
+            }
+            if (!subject.chapters) subject.chapters = [];
+
+            let chapter = subject.chapters.find(c => (c.chapterName || c.name) === rawQData.ChapterName);
+            if (!chapter) {
+              const newChapId = Date.now().toString(36) + Math.random().toString(36).substring(2);
+              chapter = { id: newChapId, chapterId: newChapId, name: rawQData.ChapterName, chapterName: rawQData.ChapterName, questions: [] };
+              subject.chapters.push(chapter);
+            }
+            if (!chapter.questions) chapter.questions = [];
+
+            const questionData = {
+              id: rawQData.QuestionID,
+              number: questionNumber,
+              correctRate: parseInt(rawQData.CorrectRate, 10) || 0,
+              lastAnswered: rawQData.LastAnsweredDate ? new Date(rawQData.LastAnsweredDate) : null,
+              nextDate: rawQData.NextScheduledDate ? new Date(rawQData.NextScheduledDate).toISOString() : null,
+              interval: rawQData.Interval || '1日',
+              answerCount: parseInt(rawQData.AnswerCount, 10) || 0,
+              understanding: parseUnderstandingValue(rawQData.Understanding, i + 1, "問題データ"),
+              comment: rawQData.Comment || '',
+            };
+            const existingQIndex = chapter.questions.findIndex(q => q.id === questionData.id);
+            if (existingQIndex > -1) {
+              chapter.questions[existingQIndex] = questionData;
+            } else {
+              chapter.questions.push(questionData);
+            }
+          }
+        }
+      }
+
+      const newAnswerHistory = [];
+      if (historyCsvContent && historyCsvContent !== "(解答履歴データがありません)") {
+        const hLines = historyCsvContent.split(/\r\n|\n|\r/).filter(line => line.trim() !== '');
+        if (hLines.length >= 1) { 
+          const hHeaderMapping = getHeaderMapping(hLines[0], "解答履歴データ");
+          const requiredHHeaders = ['id', 'QuestionID', 'isCorrect', 'Understanding']; 
+          if (!requiredHHeaders.every(rh => Object.values(hHeaderMapping).includes(rh))) {
+             throw new Error(`解答履歴に必要なヘッダー (${requiredHHeaders.join(', ')}) の一部が見つかりません。認識されたヘッダー: ${Object.values(hHeaderMapping).join(', ')}`);
+          }
+
+          for (let i = 1; i < hLines.length; i++) {
+            const values = parseCsvLineToArray(hLines[i]);
+            const entry = {};
+            Object.entries(hHeaderMapping).forEach(([colIndex, normalizedName]) => {
+              if (values[colIndex] !== undefined) {
+                entry[normalizedName] = values[colIndex];
+              }
+            });
+
+            if (!entry.id || !entry.QuestionID || typeof entry.isCorrect === 'undefined') { 
+              console.warn(`行 ${i + 1} (解答履歴): 必須フィールド (履歴ID, 問題ID, 正誤) が不足、または正誤の値が無効なためスキップします。`); continue;
+            }
+            
+            const isCorrectValue = parseIsCorrectValue(entry.isCorrect, i + 1, "解答履歴データ");
+            const understandingValue = parseUnderstandingValue(entry.Understanding, i + 1, "解答履歴データ");
+
+            newAnswerHistory.push({
+              id: entry.id,
+              questionId: entry.QuestionID,
+              isCorrect: isCorrectValue,
+              understanding: understandingValue,
+            });
+          }
+        }
+      }
+
+      const db = await openDB();
+      // 単一トランザクションでクリアと書き込みを行う
+      const tx = db.transaction([STORE_SUBJECTS, STORE_HISTORY], 'readwrite');
+      const subjectsStore = tx.objectStore(STORE_SUBJECTS);
+      const historyStore = tx.objectStore(STORE_HISTORY);
+
+      await new Promise((resolve, reject) => { // subjectsストアのクリア
+        const req = subjectsStore.clear();
+        req.onsuccess = resolve;
+        req.onerror = (e) => reject(new Error(`Failed to clear subjects store: ${e.target.error?.message || e.target.error}`));
+      });
+      await new Promise((resolve, reject) => { // historyストアのクリア
+        const req = historyStore.clear();
+        req.onsuccess = resolve;
+        req.onerror = (e) => reject(new Error(`Failed to clear history store: ${e.target.error?.message || e.target.error}`));
+      });
+      
+      // newSubjectsの書き込み
+      for (const subject of newSubjects) {
+        await new Promise((resolve, reject) => {
+          const req = subjectsStore.put(subject);
+          req.onsuccess = resolve;
+          req.onerror = (e) => reject(new Error(`Failed to put subject ${subject.id}: ${e.target.error?.message || e.target.error}`));
+        });
+      }
+      // newAnswerHistoryの書き込み
+      for (const record of newAnswerHistory) {
+        await new Promise((resolve, reject) => {
+          const req = historyStore.put(record);
+          req.onsuccess = resolve;
+          req.onerror = (e) => reject(new Error(`Failed to put history record ${record.id}: ${e.target.error?.message || e.target.error}`));
+        });
+      }
+      
+      await tx.done; // トランザクションをコミット
+      
+      setSubjects(newSubjects);
+      setAnswerHistory(newAnswerHistory); 
+
+      console.log("全データCSVインポート完了");
+      return { success: true, message: "全データのインポートに成功しました。" };
+
+    } catch (error) {
+      console.error("全データCSVインポート処理中にエラー:", error);
+      // エラー発生時は状態をロールバックしない（IndexedDBトランザクションが失敗すれば自動的にロールバックされる）
+      return { success: false, message: `インポートエラー: ${error.message}` };
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setIsLoading, setSubjects, setAnswerHistory, openDB, parseCsvLineToArray, STORE_SUBJECTS, STORE_HISTORY]); // 依存配列にSTORE_SUBJECTS, STORE_HISTORY追加
+
+  // --- 解答履歴JSONエクスポート ---
+  const handleAnswerHistoryJsonExport = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const historyToExport = await loadAnswerHistory();
+      if (!historyToExport || historyToExport.length === 0) {
+        alert("エクスポートする解答履歴がありません。");
+        setIsLoading(false);
+        return false;
+      }
+      const exportData = {
+        exportDate: new Date().toISOString(),
+        dataType: "answerHistoryOnly",
+        appVersion: "1.2.0-custom",
+        answerHistory: historyToExport
+      };
+      const jsonString = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.download = `answer_history_export-${dateStr}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      alert("解答履歴のJSONエクスポートが完了しました。");
+      setIsLoading(false);
+      return true;
+    } catch (error) {
+      console.error("解答履歴JSONエクスポートエラー:", error);
+      alert(`解答履歴のJSONエクスポート中にエラーが発生しました: ${error.message}`);
+      setIsLoading(false);
+      return false;
+    } 
+  }, [setIsLoading, loadAnswerHistory]);
+
+  // --- 解答履歴JSONインポート ---
+  const handleAnswerHistoryJsonImport = useCallback(async (jsonString) => {
+    if (!window.confirm("解答履歴JSONをインポートすると、現在の解答履歴はファイルの内容で【完全に上書き】されます。この操作は元に戻せません。続行しますか？")) {
+      return { success: false, message: "インポートがキャンセルされました。" };
+    }
+    setIsLoading(true);
+    try {
+      const importedObject = JSON.parse(jsonString);
+      if (!importedObject || importedObject.dataType !== "answerHistoryOnly" || !Array.isArray(importedObject.answerHistory)) {
+        throw new Error("無効な解答履歴JSONファイル形式です。ファイルが破損しているか、形式が異なります。 (dataType: answerHistoryOnly が必要)");
+      }
+      const newAnswerHistory = importedObject.answerHistory;
+
+      for (const record of newAnswerHistory) {
+        // timestamp は必須ではなくなった
+        if (!record.id || !record.questionId) { 
+          throw new Error("解答履歴データ内に必須フィールド (id, questionId) が不足しているレコードがあります。");
+        }
+        // timestamp が存在する場合、有効な日付か確認 (任意)
+        if (record.timestamp && isNaN(new Date(record.timestamp).getTime())) {
+          console.warn(`解答履歴レコード (ID: ${record.id}) の timestamp 「${record.timestamp}」は無効な日付形式です。timestampなしとして扱われます。`);
+          record.timestamp = undefined; // 無効な場合はundefinedに
+        }
+      }
+
+      const db = await openDB();
+      const tx = db.transaction(STORE_HISTORY, 'readwrite');
+      await tx.objectStore(STORE_HISTORY).clear();
+      for (const record of newAnswerHistory) {
+        // 確実に id があるようにする (もしJSONになくてもここで生成)
+        const historyId = record.id || (crypto.randomUUID ? crypto.randomUUID() : `history-${Date.now()}-${Math.random()}`);
+        await tx.objectStore(STORE_HISTORY).put({ ...record, id: historyId });
+      }
+      await tx.done;
+
+      // timestamp が存在する場合のみソートキーとして意味がある
+      // timestamp がないものは最後尾、またはID順など別のルールも検討可能
+      const sortedHistory = newAnswerHistory.sort((a, b) => {
+        const aTime = a.timestamp ? new Date(a.timestamp).getTime() : Infinity; // timestampなしは最後に
+        const bTime = b.timestamp ? new Date(b.timestamp).getTime() : Infinity;
+        if (aTime !== bTime) {
+          return aTime - bTime;
+        }
+        // timestampが同じか、両方ない場合はIDでソート (安定ソートのため)
+        if (a.id && b.id) return String(a.id).localeCompare(String(b.id));
+        return 0;
+      });
+
+      setAnswerHistory(sortedHistory);
+      setIsLoading(false);
+      return { success: true, message: `解答履歴 ${newAnswerHistory.length} 件のJSONインポートに成功しました。` };
+
+    } catch (error) {
+      console.error("解答履歴JSONインポートエラー:", error);
+      setIsLoading(false);
+      return { success: false, message: `インポートエラー: ${error.message}` };
+    }
+  }, [setIsLoading, setAnswerHistory, openDB]);
+
+  // --- 問題IDリストJSONエクスポート ---
+  const handleQuestionIdOnlyJsonExport = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const currentSubjects = await loadSubjects();
+      if (!currentSubjects || currentSubjects.length === 0) {
+        alert("エクスポートする問題データがありません。");
+        setIsLoading(false);
+        return false;
+      }
+      const questionIds = [];
+      currentSubjects.forEach(subject => {
+        if (subject && Array.isArray(subject.chapters)) {
+          subject.chapters.forEach(chapter => {
+            if (chapter && Array.isArray(chapter.questions)) {
+              chapter.questions.forEach(question => {
+                if (question && question.id) {
+                  questionIds.push(question.id);
+                }
+              });
+            }
+          });
+        }
+      });
+
+      if (questionIds.length === 0) {
+        alert("エクスポート対象の問題IDが見つかりませんでした。");
+        setIsLoading(false);
+        return false;
+      }
+
+      const exportData = {
+        exportDate: new Date().toISOString(),
+        dataType: "questionIdListOnly",
+        appVersion: "1.2.0-custom",
+        questionIds: questionIds
+      };
+      const jsonString = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.download = `question_id_list_export-${dateStr}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      alert("問題IDリストのJSONエクスポートが完了しました。");
+      setIsLoading(false);
+      return true;
+    } catch (error) {
+      console.error("問題IDリストJSONエクスポートエラー:", error);
+      alert(`問題IDリストのJSONエクスポート中にエラーが発生しました: ${error.message}`);
+      setIsLoading(false);
+      return false;
+    }
+  }, [setIsLoading, loadSubjects]);
+
+  // --- 問題リストJSONエクスポート ---
+  const handleQuestionListJsonExport = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const currentSubjects = await loadSubjects();
+      if (!currentSubjects || currentSubjects.length === 0) {
+        alert("エクスポートする問題データがありません。");
+        setIsLoading(false);
+        return false;
+      }
+      const exportData = {
+        exportDate: new Date().toISOString(),
+        dataType: "questionListOnly",
+        appVersion: "1.2.0-custom", 
+        subjects: currentSubjects
+      };
+      const jsonString = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.download = `question_list_export-${dateStr}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      alert("問題リストのJSONエクスポートが完了しました。");
+      setIsLoading(false);
+      return true;
+    } catch (error) {
+      console.error("問題リストJSONエクスポートエラー:", error);
+      alert(`問題リストのJSONエクスポート中にエラーが発生しました: ${error.message}`);
+      setIsLoading(false);
+      return false;
+    }
+  }, [setIsLoading, loadSubjects]);
+
+  // --- 問題リストJSONインポート ---
+  const handleQuestionListJsonImport = useCallback(async (jsonString) => {
+    if (!window.confirm("問題リストJSONをインポートすると、現在の問題リストはファイルの内容で【完全に上書き】されます。解答履歴は変更されません。この操作は元に戻せません。続行しますか？")) {
+      return { success: false, message: "インポートがキャンセルされました。" };
+    }
+    setIsLoading(true);
+    try {
+      const importedObject = JSON.parse(jsonString);
+      if (!importedObject || importedObject.dataType !== "questionListOnly" || !Array.isArray(importedObject.subjects)) {
+        throw new Error("無効な問題リストJSONファイル形式です。ファイルが破損しているか、形式が異なります。(dataType: questionListOnly が必要)");
+      }
+      const newSubjects = importedObject.subjects;
+
+      await saveSubjects(newSubjects);
+      setSubjects(newSubjects);
+      
+      const initialExpandedSubjectsState = {};
+      newSubjects.forEach(subject => { if (subject?.id) { initialExpandedSubjectsState[subject.id] = false; } });
+      if (newSubjects.length > 0 && newSubjects[0]?.id) { initialExpandedSubjectsState[newSubjects[0].id] = true; }
+      setExpandedSubjects(initialExpandedSubjectsState);
+      setExpandedChapters({}); 
+
+      setIsLoading(false);
+      return { success: true, message: `問題リスト ${newSubjects.length} 件のJSONインポートに成功しました。` };
+
+    } catch (error) {
+      console.error("問題リストJSONインポートエラー:", error);
+      setIsLoading(false);
+      return { success: false, message: `インポートエラー: ${error.message}` };
+    }
+  }, [setIsLoading, setSubjects, saveSubjects, setExpandedSubjects, setExpandedChapters]);
 
   // --- メインビュー切り替え ---
   const MainView = () => {
-     if (isLoading || activeWidgets === null) {
-       return <div className="p-8 text-center text-gray-500">データを読み込んでいます...</div>;
-     }
+    if (isLoading || activeWidgets === null) {
+      return <div className="p-8 text-center text-gray-500">データを読み込んでいます...</div>;
+    }
     switch (activeTab) {
       case 'today': return <TodayView todayQuestions={todayQuestionsList} recordAnswer={recordAnswer} formatDate={formatDate} />;
       case 'schedule': return <ScheduleView subjects={subjects} getQuestionsForDate={getQuestionsForDate} handleQuestionDateChange={handleQuestionDateChange} formatDate={formatDate} />;
@@ -739,12 +1702,12 @@ function App() {
         return <Dashboard
                  subjects={subjects}
                  answerHistory={answerHistory}
-                 formatDate={formatDate}
+                 formatDate={formatDate} // Dashboard にも formatDate を渡す
                  layouts={dashboardLayouts}
-                 onLayoutChange={handleLayoutChange}
+                 onLayoutChange={handleDashboardLayoutChange} // 名前変更: handleLayoutChange -> handleDashboardLayoutChange
                  activeWidgets={activeWidgets}
-                 availableWidgets={availableWidgets}
-                 onActiveWidgetsChange={updateActiveWidgets}
+                 availableWidgets={availableWidgets} // availableWidgets を渡す
+                 onActiveWidgetsChange={handleWidgetChange} // 名前変更: updateActiveWidgets -> handleWidgetChange
                />;
       case 'trends': return <AmbiguousTrendsPage subjects={subjects} formatDate={formatDate} answerHistory={answerHistory} saveComment={saveComment} />;
       case 'stats': return <EnhancedStatsPage subjects={subjects} answerHistory={answerHistory} formatDate={formatDate} />;
@@ -755,6 +1718,16 @@ function App() {
                                 onDataExport={handleDataExport} 
                                 onCsvDataExport={handleCsvExportData}
                                 onCsvDataImport={handleCsvImportData}
+                                onAnswerHistoryCsvExport={handleAnswerHistoryCsvExport}
+                                onQuestionIdOnlyCsvExport={handleQuestionIdOnlyCsvExport}
+                                onAnswerHistoryCsvImport={handleAnswerHistoryCsvImport}
+                                onFullDataCsvExport={handleFullDataCsvExport} // 全データCSVエクスポート
+                                onFullDataCsvImport={handleFullDataCsvImport} // 全データCSVインポート
+                                onAnswerHistoryJsonExport={handleAnswerHistoryJsonExport} 
+                                onAnswerHistoryJsonImport={handleAnswerHistoryJsonImport} 
+                                onQuestionIdOnlyJsonExport={handleQuestionIdOnlyJsonExport}
+                                onQuestionListJsonExport={handleQuestionListJsonExport}
+                                onQuestionListJsonImport={handleQuestionListJsonImport}
                              />;
       default: return <TodayView todayQuestions={todayQuestionsList} recordAnswer={recordAnswer} formatDate={formatDate} />;
     }
@@ -765,7 +1738,7 @@ function App() {
     <div className="min-h-screen bg-gray-50">
       <TopNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
       {showExportReminder && !isLoading && (
-        <ReminderNotification daysSinceLastExport={daysSinceLastExport} onGoToSettings={handleGoToSettings} onDismiss={handleDismissReminder} />
+        <ReminderNotification daysSinceLastExport={daysSinceLastExport} onGoToSettings={() => setActiveTab('settings')} onDismiss={handleReminderDismiss} />
       )}
       <div className="p-0 sm:p-4">
         <MainView />

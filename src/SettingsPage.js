@@ -1,10 +1,11 @@
 // src/SettingsPage.js
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { 
   Settings, Trash2, AlertTriangle, RefreshCw, 
-  Download, Upload, Check, X
+  DownloadCloud, UploadCloud, Check, X, FileText, FileClock, ListChecks, Database, History, Info
 } from 'lucide-react';
 import styles from './SettingsPage.module.css';
+import PropTypes from 'prop-types';
 
 const SettingsPage = ({ 
   onResetData, 
@@ -13,6 +14,15 @@ const SettingsPage = ({
   onDataExport,       // JSONエクスポート関数
   onCsvDataExport,    // CSVエクスポート関数 (新規)
   onCsvDataImport,    // CSVインポート関数 (新規)
+  onAnswerHistoryCsvExport, // 解答履歴CSVエクスポート用 (新規)
+  onQuestionIdOnlyCsvExport, // 問題IDのみCSVエクスポート用 (新規)
+  onAnswerHistoryCsvImport, // 新しいプロパティ
+  onFullDataCsvExport,  // 新しいプロパティ
+  onFullDataCsvImport,  // 新しいプロパティ
+  onAnswerHistoryJsonExport, // 新しいプロパティ
+  onAnswerHistoryJsonImport, // 新しいプロパティ
+  onQuestionIdOnlyJsonExport, // ★ 新しいプロパティ
+  onQuestionListJsonExport, // ★ 問題リストJSONエクスポート用
   subjects = [],      // 新規: エクスポート用の科目データ
   answerHistory = []  // 新規: エクスポート用の解答履歴
 }) => {
@@ -38,16 +48,34 @@ const SettingsPage = ({
   };
 
   // 新規: インポート関連の状態
-  const [importFile, setImportFile] = useState(null);
-  const [importError, setImportError] = useState('');
-  const [importSuccess, setImportSuccess] = useState(false);
-  const fileInputRef = useRef(null); // ファイル入力要素の参照
+  const [jsonImportFile, setJsonImportFile] = useState(null);
+  const [jsonImportError, setJsonImportError] = useState('');
+  const [jsonImportSuccess, setJsonImportSuccess] = useState('');
+  const jsonFileInputRef = useRef(null); // ファイル入力要素の参照
 
   // CSVインポート関連の状態 (新規)
   const [csvImportFile, setCsvImportFile] = useState(null);
   const [csvImportError, setCsvImportError] = useState('');
-  const [csvImportSuccess, setCsvImportSuccess] = useState(false);
+  const [csvImportSuccess, setCsvImportSuccess] = useState('');
   const csvFileInputRef = useRef(null);
+
+  // 解答履歴CSVインポート用のstate
+  const [historyCsvImportFile, setHistoryCsvImportFile] = useState(null);
+  const [historyCsvImportError, setHistoryCsvImportError] = useState('');
+  const [historyCsvImportSuccess, setHistoryCsvImportSuccess] = useState('');
+  const historyCsvFileInputRef = useRef(null);
+
+  // 全データCSVインポート用のstate
+  const [fullCsvImportFile, setFullCsvImportFile] = useState(null);
+  const [fullCsvImportError, setFullCsvImportError] = useState('');
+  const [fullCsvImportSuccess, setFullCsvImportSuccess] = useState('');
+  const fullCsvFileInputRef = useRef(null);
+
+  // 解答履歴JSONインポート用のstate
+  const [answerHistoryJsonImportFile, setAnswerHistoryJsonImportFile] = useState(null);
+  const [answerHistoryJsonImportError, setAnswerHistoryJsonImportError] = useState('');
+  const [answerHistoryJsonImportSuccess, setAnswerHistoryJsonImportSuccess] = useState('');
+  const answerHistoryJsonFileInputRef = useRef(null);
 
   // エクスポート機能のハンドラ
   const handleExportData = () => {
@@ -91,295 +119,475 @@ const SettingsPage = ({
   };
 
   // ファイル選択時のハンドラ
-  const handleFileChange = (e) => {
+  const handleJsonFileChange = (e) => {
     const file = e.target.files[0];
-    setImportFile(file);
-    setImportError(''); // エラーをクリア
-    setImportSuccess(false); // 成功状態をリセット
+    setJsonImportFile(file);
+    setJsonImportError('');
+    setJsonImportSuccess('');
+    if (jsonFileInputRef.current) jsonFileInputRef.current.value = null; // ファイル選択をクリア
   };
 
   // CSVファイル選択時のハンドラ (新規)
   const handleCsvFileChange = (e) => {
     const file = e.target.files[0];
     setCsvImportFile(file);
-    setCsvImportError(''); 
-    setCsvImportSuccess(false); 
+    setCsvImportError('');
+    setCsvImportSuccess('');
+    if (csvFileInputRef.current) csvFileInputRef.current.value = null;
   };
 
   // インポート実行のハンドラ
-  const handleImportData = () => {
-    // ファイルが選択されていない場合
-    if (!importFile) {
-      setImportError('ファイルを選択してください');
+  const handleImportJsonData = () => {
+    if (!jsonImportFile) {
+      setJsonImportError('ファイルを選択してください');
+      setJsonImportSuccess('');
       return;
     }
-    
-    // ファイルサイズチェック (10MB上限とする)
-    if (importFile.size > 10 * 1024 * 1024) {
-      setImportError('ファイルサイズが大きすぎます（上限: 10MB）');
+    if (jsonImportFile.size > 10 * 1024 * 1024) {
+      setJsonImportError('ファイルサイズが大きすぎます（上限: 10MB）');
+      setJsonImportSuccess('');
       return;
     }
-    
-    // FileReaderでファイルを読み込む
     const reader = new FileReader();
-    
-    // 読み込み完了時の処理
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
-        // JSON文字列をパース
         const importedData = JSON.parse(e.target.result);
-        
-        // 最低限の検証
         if (!importedData.subjects) {
-          setImportError('無効なファイル形式です。正しい学習データファイルを選択してください。');
+          setJsonImportError('無効なJSONファイル形式です。');
+          setJsonImportSuccess('');
           return;
         }
-        
-        // インポート前の確認
-        const confirmed = window.confirm(
-          "データをインポートすると、現在のデータは上書きされます。続行しますか？"
-        );
-        
-        if (!confirmed) {
-          console.log("インポートがキャンセルされました");
-          return;
-        }
-        
-        // App.jsの関数にデータを渡す
-        const success = onDataImport(importedData);
-        
+        // App.jsから渡される onDataImport は Promise を返す想定
+        const success = await onDataImport(importedData);
         if (success) {
-          // インポート成功
-          setImportSuccess(true);
-          setImportFile(null);
-          
-          // ファイル入力をリセット
-          if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-          }
+          setJsonImportSuccess('JSONデータのインポートに成功しました。');
+          setJsonImportError('');
+          setJsonImportFile(null);
+          if (jsonFileInputRef.current) jsonFileInputRef.current.value = '';
         } else {
-          // インポート失敗
-          setImportError('データのインポートに失敗しました。ファイル形式を確認してください。');
+          setJsonImportError('JSONデータのインポートに失敗しました。');
+          setJsonImportSuccess('');
         }
       } catch (error) {
-        console.error("インポート解析エラー:", error);
-        setImportError('ファイルの解析に失敗しました。有効なJSONファイルか確認してください。');
+        setJsonImportError(`JSONファイルの解析エラー: ${error.message}`);
+        setJsonImportSuccess('');
       }
     };
-    
-    // 読み込みエラー時の処理
     reader.onerror = () => {
-      setImportError('ファイルの読み込みに失敗しました。');
+      setJsonImportError('ファイルの読み込みに失敗しました。');
+      setJsonImportSuccess('');
     };
-    
-    // ファイル読み込み開始
-    reader.readAsText(importFile);
+    reader.readAsText(jsonImportFile);
   };
 
   // CSVインポート実行のハンドラ (新規)
-  const handleImportCsvData = () => {
+  const handleImportCsvData = async () => {
     if (!csvImportFile) {
       setCsvImportError('CSVファイルを選択してください');
+      setCsvImportSuccess('');
       return;
     }
-    if (csvImportFile.size > 10 * 1024 * 1024) { // 10MB上限
-      setCsvImportError('ファイルサイズが大きすぎます（上限: 10MB）');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const csvString = e.target.result;
-        // App.jsのCSVインポート関数を呼び出す (props経由)
-        const success = onCsvDataImport(csvString);
-        
-        if (success) {
-          setCsvImportSuccess(true);
-          setCsvImportFile(null);
-          if (csvFileInputRef.current) {
-            csvFileInputRef.current.value = '';
-          }
-          // JSONインポートのメッセージもクリアした方が良いかもしれない
-          setImportError('');
-          setImportSuccess(false);
-        } else {
-          setCsvImportError('CSVデータのインポートに失敗しました。ファイル形式や内容を確認してください。');
-        }
-      } catch (error) {
-        console.error("CSVインポート解析エラー (SettingsPage):", error);
-        setCsvImportError('CSVファイルの処理中にエラーが発生しました。');
+    setCsvImportError('');
+    setCsvImportSuccess('問題リストCSVをインポート処理中...');
+    try {
+      const csvString = await csvImportFile.text();
+      const success = await onCsvDataImport(csvString); // onCsvDataImport が Promise を返すと仮定
+      if (success) {
+        setCsvImportSuccess('問題リストCSVのインポートに成功しました。');
+        setCsvImportError('');
+        setCsvImportFile(null);
+        if (csvFileInputRef.current) csvFileInputRef.current.value = '';
+      } else {
+        setCsvImportError('問題リストCSVのインポートに失敗しました。ファイル形式や内容を確認してください。');
+        setCsvImportSuccess('');
       }
-    };
-    reader.onerror = () => {
-      setCsvImportError('CSVファイルの読み込みに失敗しました。');
-    };
-    reader.readAsText(csvImportFile, 'UTF-8'); // 文字コードを指定
+    } catch (error) {
+      setCsvImportError(`問題リストCSVの処理エラー: ${error.message}`);
+      setCsvImportSuccess('');
+    }
   };
 
+  // 解答履歴CSVファイル選択ハンドラ
+  const handleHistoryCsvFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file && file.type === "text/csv") {
+      setHistoryCsvImportFile(file);
+      setHistoryCsvImportError('');
+      setHistoryCsvImportSuccess('');
+    } else {
+      setHistoryCsvImportFile(null);
+      setHistoryCsvImportError('CSVファイルを選択してください。');
+      setHistoryCsvImportSuccess('');
+    }
+    if (historyCsvFileInputRef.current) historyCsvFileInputRef.current.value = null;
+  };
+
+  // 解答履歴CSVインポート実行ハンドラ
+  const handleImportHistoryCsv = useCallback(async () => {
+    if (!historyCsvImportFile) {
+      setHistoryCsvImportError('解答履歴CSVファイルを選択してください。');
+      setHistoryCsvImportSuccess('');
+      return;
+    }
+    setHistoryCsvImportError('');
+    setHistoryCsvImportSuccess('解答履歴CSVをインポート処理中...');
+    try {
+      const fileContent = await historyCsvImportFile.text();
+      const result = await onAnswerHistoryCsvImport(fileContent);
+      if (result && result.success) {
+        setHistoryCsvImportSuccess(result.message || '解答履歴CSVのインポートに成功しました。');
+        setHistoryCsvImportError('');
+        if (historyCsvFileInputRef.current) historyCsvFileInputRef.current.value = '';
+        setHistoryCsvImportFile(null);
+      } else {
+        setHistoryCsvImportError(result.message || '解答履歴CSVのインポートに失敗しました。');
+        setHistoryCsvImportSuccess('');
+      }
+    } catch (error) {
+      setHistoryCsvImportError(`解答履歴CSVのインポートエラー: ${error.message}`);
+      setHistoryCsvImportSuccess('');
+    }
+  }, [historyCsvImportFile, onAnswerHistoryCsvImport]);
+
+  // 全データCSVファイル選択ハンドラ
+  const handleFullCsvFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file && file.type === "text/csv") {
+      setFullCsvImportFile(file);
+      setFullCsvImportError('');
+      setFullCsvImportSuccess('');
+    } else {
+      setFullCsvImportFile(null);
+      setFullCsvImportError('CSVファイルを選択してください。');
+      setFullCsvImportSuccess('');
+    }
+    if (fullCsvFileInputRef.current) fullCsvFileInputRef.current.value = null;
+  };
+
+  // 全データCSVインポート実行ハンドラ
+  const handleImportFullCsvData = useCallback(async () => {
+    if (!fullCsvImportFile) {
+      setFullCsvImportError('全データCSVファイルを選択してください。');
+      setFullCsvImportSuccess('');
+      return;
+    }
+    setFullCsvImportError('');
+    setFullCsvImportSuccess('全データCSVをインポート処理中...');
+    try {
+      const fileContent = await fullCsvImportFile.text();
+      const result = await onFullDataCsvImport(fileContent); // App.jsの関数を呼び出し
+      if (result && result.success) {
+        setFullCsvImportSuccess(result.message || '全データCSVのインポートに成功しました。');
+        setFullCsvImportError('');
+        if (fullCsvFileInputRef.current) fullCsvFileInputRef.current.value = '';
+        setFullCsvImportFile(null);
+      } else {
+        setFullCsvImportError(result.message || '全データCSVのインポートに失敗しました。');
+        setFullCsvImportSuccess('');
+      }
+    } catch (error) {
+      setFullCsvImportError(`全データCSVのインポートエラー: ${error.message}`);
+      setFullCsvImportSuccess('');
+    }
+  }, [fullCsvImportFile, onFullDataCsvImport]);
+
+  // 解答履歴JSONファイル選択ハンドラ
+  const handleAnswerHistoryJsonFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file && file.type === "application/json") {
+      setAnswerHistoryJsonImportFile(file);
+      setAnswerHistoryJsonImportError('');
+      setAnswerHistoryJsonImportSuccess('');
+    } else {
+      setAnswerHistoryJsonImportFile(null);
+      setAnswerHistoryJsonImportError('JSONファイルを選択してください。');
+      setAnswerHistoryJsonImportSuccess('');
+    }
+    if (answerHistoryJsonFileInputRef.current) answerHistoryJsonFileInputRef.current.value = null;
+  };
+
+  // 解答履歴JSONインポート実行ハンドラ
+  const handleImportAnswerHistoryJson = useCallback(async () => {
+    if (!answerHistoryJsonImportFile) {
+      setAnswerHistoryJsonImportError('解答履歴JSONファイルを選択してください。');
+      setAnswerHistoryJsonImportSuccess('');
+      return;
+    }
+    setAnswerHistoryJsonImportError('');
+    setAnswerHistoryJsonImportSuccess('解答履歴JSONをインポート処理中...');
+    try {
+      const fileContent = await answerHistoryJsonImportFile.text();
+      const result = await onAnswerHistoryJsonImport(fileContent); // App.jsの関数を呼び出し
+      if (result && result.success) {
+        setAnswerHistoryJsonImportSuccess(result.message || '解答履歴JSONのインポートに成功しました。');
+        setAnswerHistoryJsonImportError('');
+        if (answerHistoryJsonFileInputRef.current) answerHistoryJsonFileInputRef.current.value = '';
+        setAnswerHistoryJsonImportFile(null);
+      } else {
+        setAnswerHistoryJsonImportError(result.message || '解答履歴JSONのインポートに失敗しました。');
+        setAnswerHistoryJsonImportSuccess('');
+      }
+    } catch (error) {
+      setAnswerHistoryJsonImportError(`解答履歴JSONのインポートエラー: ${error.message}`);
+      setAnswerHistoryJsonImportSuccess('');
+    }
+  }, [answerHistoryJsonImportFile, onAnswerHistoryJsonImport]);
+
   return (
-    <div className={styles.container}>
-      <h2 className={styles.title}>
-        <Settings size={20} className={styles.titleIcon} /> 設定
-      </h2>
+    <div className={styles.settingsPage}>
+      <h1 className={styles.mainTitle}><Settings className={styles.pageIcon} />設定</h1>
 
-      {/* データエクスポート/インポートセクション (新規追加) */}
-      <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>データエクスポート/インポート</h3>
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}><Database className={styles.icon} /> JSONによるバックアップと復元</h2>
         
-        {/* エクスポート部分 */}
-        <div className={styles.dataOption}>
-          <div>
-            <h4 className={styles.dataOptionTitle}>データエクスポート</h4>
-            <p className={styles.description}>
-              現在の学習データと解答履歴をJSONファイルとしてダウンロードします。
-              バックアップとして保存したり、他のデバイスに移行する際に使用できます。
-            </p>
-          </div>
-          <div className={styles.exportButtons}>
-            <button onClick={handleExportData} className={styles.exportButton}>
-              <Download size={16} /> データをエクスポート (JSON)
-            </button>
-            <button onClick={onCsvDataExport} className={`${styles.exportButton} ${styles.csvExportButton}`}>
-              <Download size={16} /> CSVでエクスポート (問題のみ)
+        {/* 全データ JSON エクスポート・インポート */}
+        <div className={styles.subSectionContainer}>
+          <h3 className={styles.subSectionTitle}>全データ (JSON)</h3>
+          <div className={styles.buttonGroup}>
+            <button onClick={onDataExport} className={`${styles.button} ${styles.exportButton}`}>
+              <DownloadCloud className={styles.icon} /> 全データをエクスポート (JSON)
             </button>
           </div>
-        </div>
-        
-        <hr className={styles.divider} />
-        
-        {/* インポート部分 */}
-        <div className={styles.dataOption}>
-          <div>
-            <h4 className={styles.dataOptionTitle}>データインポート</h4>
-            <p className={styles.description}>
-              エクスポートしたデータファイルをアップロードして復元します。
-              現在のデータは上書きされますのでご注意ください。
+          <div className={styles.importContainer}>
+            <h4 className={styles.subSubSectionTitle}>全データをインポート (JSON)</h4>
+            <p className={styles.warningText}>
+              <AlertTriangle className={`${styles.icon} ${styles.warningIcon}`} />
+              現在の全ての学習データと解答履歴が、ファイルの内容で上書きされます。この操作は元に戻せません。事前に現行データのバックアップ（エクスポート）を強く推奨します。
             </p>
-            
-            <div className={styles.importControls}>
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".json"
-                onChange={handleFileChange}
-                className={styles.fileInput}
-              />
-              
-              <button 
-                onClick={handleImportData} 
-                disabled={!importFile}
-                className={`${styles.importButton} ${!importFile ? styles.importButtonDisabled : ''}`}
-              >
-                <Upload size={16} /> データをインポート
-              </button>
-            </div>
-            
-            {importError && (
-              <div className={styles.errorMessage}>
-                <X size={16} style={{ marginRight: '0.5rem' }} />
-                {importError}
-              </div>
-            )}
-            
-            {importSuccess && (
-              <div className={styles.successMessage}>
-                <Check size={16} style={{ marginRight: '0.5rem' }} />
-                データを正常にインポートしました！
-              </div>
-            )}
+            <input 
+              type="file" 
+              accept=".json" 
+              onChange={handleJsonFileChange}
+              ref={jsonFileInputRef}
+              className={styles.fileInput}
+            />
+            {jsonImportError && <p className={styles.errorMessage}><X className={styles.msgIcon} />{jsonImportError}</p>}
+            {jsonImportSuccess && <p className={styles.successMessage}><Check className={styles.msgIcon} />{jsonImportSuccess}</p>}
+            <button 
+              onClick={handleImportJsonData}
+              disabled={!jsonImportFile}
+              className={`${styles.button} ${styles.importButton}`}>
+              <UploadCloud className={styles.icon} /> 全データをインポート (JSON)
+            </button>
           </div>
         </div>
-      </div>
 
-      <hr className={styles.divider} />
-      
-      {/* CSVデータインポートセクション (新規追加) */}
-      <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>CSVデータインポート (問題のみ)</h3>
-        <div className={styles.dataOption}>
-          <div>
-            <h4 className={styles.dataOptionTitle}>問題データをCSVからインポート</h4>
-            <p className={styles.description}>
-              CSVファイルから問題データをインポートします。
-              既存の同名・同IDの問題は上書きされ、新規の問題は追加されます。
-              現在のデータは変更されるため、事前にバックアップ（JSONエクスポート推奨）をお勧めします。
-              CSVの列は次の通りである必要があります: SubjectName, ChapterName, QuestionID, QuestionNumber, CorrectRate, LastAnsweredDate (YYYY-MM-DD), NextScheduledDate (YYYY-MM-DD), Interval, AnswerCount, Understanding, Comment
-            </p>
-            
-            <div className={styles.importControls}>
-              <input
-                type="file"
-                ref={csvFileInputRef} // 新しいref
-                accept=".csv"
-                onChange={handleCsvFileChange} // 新しいハンドラ
-                className={styles.fileInput}
-              />
-              
-              <button 
-                onClick={handleImportCsvData} // 新しいハンドラ
-                disabled={!csvImportFile} // 新しいstate
-                className={`${styles.importButton} ${!csvImportFile ? styles.importButtonDisabled : ''}`}
-              >
-                <Upload size={16} /> CSVからインポート
-              </button>
-            </div>
-            
-            {csvImportError && ( // 新しいstate
-              <div className={styles.errorMessage}>
-                <X size={16} style={{ marginRight: '0.5rem' }} />
-                {csvImportError}
-              </div>
-            )}
-            
-            {csvImportSuccess && ( // 新しいstate
-              <div className={styles.successMessage}>
-                <Check size={16} style={{ marginRight: '0.5rem' }} />
-                CSVからデータを正常にインポートしました！
-              </div>
-            )}
+        <hr className={styles.dividerShort} />
+
+        {/* 問題リストのみ JSON エクスポート */}
+        <div className={styles.subSectionContainer}>
+          <h3 className={styles.subSectionTitle}>問題リストのみ (JSON)</h3>
+          <p className={styles.descriptionText}>
+            現在の問題リスト（科目、章、各問題の詳細設定を含む）をJSON形式でエクスポートします。
+          </p>
+          <div className={styles.buttonGroup}>
+            <button onClick={onQuestionListJsonExport} className={`${styles.button} ${styles.exportButton} ${styles.jsonQuestionListExportButton}`}> 
+              <ListChecks className={styles.icon} /> 問題リストをエクスポート (JSON)
+            </button>
+          </div>
+          {/* このセクションにはインポート機能は追加しない (全データインポートと重複するため) */}
+        </div>
+
+        <hr className={styles.dividerShort} />
+
+        {/* 問題IDリストのみ JSON エクスポート */}
+        <div className={styles.subSectionContainer}>
+          <h3 className={styles.subSectionTitle}>問題IDリストのみ (JSON)</h3>
+          <p className={styles.descriptionText}>
+            すべての問題のQuestionIDのリストをJSON形式でエクスポートします。インポート機能はありません。
+          </p>
+          <div className={styles.buttonGroup}>
+            <button onClick={onQuestionIdOnlyJsonExport} className={`${styles.button} ${styles.exportButton} ${styles.jsonIdListExportButton}`}> 
+              <ListChecks className={styles.icon} /> 問題IDリストをエクスポート (JSON)
+            </button>
           </div>
         </div>
-      </div>
 
-      <hr className={styles.divider} />
-
-      {/* 既存のデータ管理セクション */}
-      <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>データ管理</h3>
-        
-        {/* 回答状況のみリセットボタン */}
-        <div className={styles.resetOption}>
-          <div>
-            <h4 className={styles.resetOptionTitle}>回答状況のみリセット</h4>
-            <p className={styles.description}>
-              問題リストを維持したまま、解答回数、正解率、理解度、日付などの回答状況のみをリセットします。
-              コメントは削除されません。
-            </p>
+        {/* 解答履歴のみ JSON エクスポート・インポート */}
+        <div className={styles.subSectionContainer}>
+          <h3 className={styles.subSectionTitle}>解答履歴のみ (JSON)</h3>
+          <div className={styles.buttonGroup}>
+            <button onClick={onAnswerHistoryJsonExport} className={`${styles.button} ${styles.exportButton} ${styles.jsonHistoryExportButton}`}> 
+              <FileClock className={styles.icon} /> 解答履歴をエクスポート (JSON)
+            </button>
           </div>
-          <button onClick={handleResetAnswerStatusOnly} className={`${styles.resetButton} ${styles.resetAnswerButton}`}>
-            <RefreshCw size={16} /> 回答状況をリセット
+          <div className={styles.importContainer}>
+            <h4 className={styles.subSubSectionTitle}>解答履歴をインポート (JSON)</h4>
+            <p className={`${styles.warningText} ${styles.criticalWarning}`}>
+              <AlertTriangle className={`${styles.icon} ${styles.warningIcon}`} />
+              <strong>重要:</strong> この操作を実行すると、既存の全ての解答履歴がJSONファイルの内容で完全に置き換えられます。問題リストは変更されません。この操作は元に戻せません。
+            </p>
+            <input 
+              type="file" 
+              accept=".json" 
+              onChange={handleAnswerHistoryJsonFileChange} 
+              ref={answerHistoryJsonFileInputRef}
+              className={styles.fileInput}
+            />
+            {answerHistoryJsonImportError && <p className={styles.errorMessage}><X className={styles.msgIcon} />{answerHistoryJsonImportError}</p>}
+            {answerHistoryJsonImportSuccess && <p className={styles.successMessage}><Check className={styles.msgIcon} />{answerHistoryJsonImportSuccess}</p>}
+            <button 
+              onClick={handleImportAnswerHistoryJson} 
+              disabled={!answerHistoryJsonImportFile}
+              className={`${styles.button} ${styles.importButton} ${styles.jsonHistoryImportButton}`}> 
+              <UploadCloud className={styles.icon} /> 解答履歴をインポート (JSON)
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}><FileText className={styles.icon} /> CSVによるデータ連携</h2>
+        <p className={styles.infoText}>
+          <Info className={`${styles.icon} ${styles.infoIcon}`} />
+          CSVファイル形式で、問題リストや解答履歴をエクスポート・インポートできます。これにより、表計算ソフトでの編集や他のツールとのデータ連携が可能です。
+        </p>
+        
+        <h3 className={styles.subSectionTitle}>CSVエクスポート</h3>
+        <div className={`${styles.buttonGroup} ${styles.exportButtonsContainerGrid}`}> 
+          <button onClick={onFullDataCsvExport} className={`${styles.button} ${styles.exportButton} ${styles.fullCsvExportButton}`}>
+            <DownloadCloud className={styles.icon} /> 全データをエクスポート (CSV)
+          </button>
+          <button onClick={onCsvDataExport} className={`${styles.button} ${styles.csvExportButton}`}>
+            <DownloadCloud className={styles.icon} /> 問題リストをエクスポート (CSV)
+          </button>
+          <button onClick={onAnswerHistoryCsvExport} className={`${styles.button} ${styles.historyCsvExportButton}`}>
+            <FileClock className={styles.icon} /> 解答履歴をエクスポート (CSV)
+          </button>
+          <button onClick={onQuestionIdOnlyCsvExport} className={`${styles.button} ${styles.idListCsvExportButton}`}>
+            <ListChecks className={styles.icon} /> 問題IDリストをエクスポート (CSV)
           </button>
         </div>
         
-        <hr className={styles.divider} />
-        
-        {/* 完全リセットボタン */}
-        <div className={styles.resetOption}>
-          <div>
-            <h4 className={styles.resetOptionTitle}>完全リセット</h4>
-            <p className={styles.description}>
-              学習データ（各問題の解答回数、日付、理解度など）と解答履歴をすべて削除し、
-              アプリケーションを初期状態（全問題が「未学習」の状態）に戻します。
-            </p>
-          </div>
-          <button onClick={handleResetClick} className={styles.resetButton}>
-            <AlertTriangle size={16} /> 学習データを完全リセット
+        <hr className={styles.dividerShort} />
+
+        <h3 className={styles.subSectionTitle}>CSVインポート</h3>
+        <div className={styles.importContainer}>
+          <h4 className={styles.subSubSectionTitle}>問題リストをインポート (CSV)</h4>
+          <p className={styles.descriptionText}>
+            CSVファイルから問題リストをインポートします。既存の問題はQuestionIDに基づいて更新され、存在しないQuestionIDの場合は新規に追加されます。QuestionNumberが指定されていないか無効な場合は、章ごとに自動で採番されます。
+          </p>
+          <p className={styles.warningTextSmall}>
+            <AlertTriangle className={`${styles.iconSmall} ${styles.warningIcon}`} />
+            インポート前に現在の問題リストをエクスポートしておくことを推奨します。
+          </p>
+          <input 
+            type="file" 
+            accept=".csv" 
+            onChange={handleCsvFileChange} 
+            ref={csvFileInputRef}
+            className={styles.fileInput}
+          />
+          {csvImportError && <p className={styles.errorMessage}><X className={styles.msgIcon} />{csvImportError}</p>}
+          {csvImportSuccess && <p className={styles.successMessage}><Check className={styles.msgIcon} />{csvImportSuccess}</p>}
+          <button 
+            onClick={handleImportCsvData} 
+            disabled={!csvImportFile}
+            className={`${styles.button} ${styles.importButton}`}
+          >
+            <UploadCloud className={styles.icon} /> 問題リストをインポート (CSV)
           </button>
         </div>
-      </div>
+
+        <div className={styles.importContainer}>
+          <h4 className={styles.subSubSectionTitle}>解答履歴をインポート (CSV)</h4>
+          <p className={styles.descriptionText}> 
+            CSVファイルから解答履歴をインポートします。
+          </p>
+          <p className={`${styles.warningText} ${styles.criticalWarning}`}>
+            <AlertTriangle className={`${styles.icon} ${styles.warningIcon}`} />
+            <strong>超重要:</strong> この操作を実行すると、既存の全ての解答履歴がCSVファイルの内容で完全に置き換えられます。この操作は元に戻すことができません。必ず事前に「解答履歴をエクスポート (CSV)」機能を使ってバックアップを取得してください。
+          </p>
+          <input 
+            type="file" 
+            accept=".csv" 
+            onChange={handleHistoryCsvFileChange} 
+            ref={historyCsvFileInputRef}
+            className={styles.fileInput}
+          />
+          {historyCsvImportError && <p className={styles.errorMessage}><X className={styles.msgIcon} />{historyCsvImportError}</p>}
+          {historyCsvImportSuccess && <p className={styles.successMessage}><Check className={styles.msgIcon} />{historyCsvImportSuccess}</p>}
+          <button 
+            onClick={handleImportHistoryCsv} 
+            disabled={!historyCsvImportFile}
+            className={`${styles.button} ${styles.importButton} ${styles.importHistoryButton}`}
+          >
+            <UploadCloud className={styles.icon} /> 解答履歴をインポート (CSV)
+          </button>
+        </div>
+
+        {/* 全データCSVインポートセクション */}
+        <div className={styles.importContainer} style={{ marginTop: '25px' }}>
+          <h4 className={styles.subSubSectionTitle}>全データをインポート (CSV)</h4>
+          <p className={`${styles.warningText} ${styles.criticalWarning}`}>
+            <AlertTriangle className={`${styles.icon} ${styles.warningIcon}`} />
+            <strong>超重要:</strong> この操作を実行すると、現在の問題リストと解答履歴を含む全てのデータがCSVファイルの内容で完全に置き換えられます。この操作は元に戻すことができません。CSVファイルは「全データをエクスポート (CSV)」機能で作成されたものである必要があります。
+          </p>
+          <input 
+            type="file" 
+            accept=".csv" 
+            onChange={handleFullCsvFileChange} 
+            ref={fullCsvFileInputRef}
+            className={styles.fileInput}
+          />
+          {fullCsvImportError && <p className={styles.errorMessage}><X className={styles.msgIcon} />{fullCsvImportError}</p>}
+          {fullCsvImportSuccess && <p className={styles.successMessage}><Check className={styles.msgIcon} />{fullCsvImportSuccess}</p>}
+          <button 
+            onClick={handleImportFullCsvData} 
+            disabled={!fullCsvImportFile}
+            className={`${styles.button} ${styles.importButton} ${styles.importFullDataButton}`}>
+            <UploadCloud className={styles.icon} /> 全データをインポート (CSV)
+          </button>
+        </div>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}><Trash2 className={styles.icon} /> データリセット</h2>
+        <div className={styles.resetOption}>
+          <div>
+            <h3 className={styles.subSectionTitle}>回答状況のみリセット</h3>
+            <p className={styles.descriptionText}>
+              問題リスト（問題ID、科目名、章名、問題番号、コメント）は維持したまま、各問題の正解率、最終解答日、次回予定日、解答回数、理解度といった学習進捗のみを初期状態（未学習など）にリセットします。
+            </p>
+          </div>
+          <button onClick={handleResetAnswerStatusOnly} className={`${styles.button} ${styles.resetButtonMinor}`}>
+            <RefreshCw className={styles.icon} /> 回答状況のみリセット
+          </button>
+        </div>
+        <hr className={styles.dividerShort} />
+        <div className={styles.resetOption}>
+          <div>
+            <h3 className={styles.subSectionTitle}>全データリセット（初期化）</h3>
+            <p className={`${styles.descriptionText} ${styles.criticalWarningText}`}>
+              <AlertTriangle className={`${styles.iconSmall} ${styles.warningIcon}`} />
+              全ての学習データ（問題リスト自体も含む）および解答履歴を完全に削除し、アプリケーションを工場出荷時の状態に戻します。この操作は取り消せません。
+            </p>
+          </div>
+          <button onClick={handleResetClick} className={`${styles.button} ${styles.resetButtonMajor}`}>
+            <Trash2 className={styles.icon} /> 全データをリセット
+          </button>
+        </div>
+      </section>
     </div>
   );
+};
+
+SettingsPage.propTypes = {
+  onResetData: PropTypes.func.isRequired,
+  onResetAnswerStatusOnly: PropTypes.func.isRequired,
+  onDataImport: PropTypes.func.isRequired,
+  onDataExport: PropTypes.func.isRequired,
+  onCsvDataExport: PropTypes.func.isRequired,
+  onCsvDataImport: PropTypes.func.isRequired,
+  onAnswerHistoryCsvExport: PropTypes.func.isRequired,
+  onQuestionIdOnlyCsvExport: PropTypes.func.isRequired,
+  onAnswerHistoryCsvImport: PropTypes.func.isRequired,
+  onFullDataCsvExport: PropTypes.func.isRequired,
+  onFullDataCsvImport: PropTypes.func.isRequired,
+  onAnswerHistoryJsonExport: PropTypes.func.isRequired,
+  onAnswerHistoryJsonImport: PropTypes.func.isRequired,
+  onQuestionIdOnlyJsonExport: PropTypes.func.isRequired, // ★ 新しいプロパティ
+  onQuestionListJsonExport: PropTypes.func.isRequired // ★ 問題リストJSONエクスポート用
 };
 
 export default SettingsPage;

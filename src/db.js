@@ -234,6 +234,62 @@ const loadAnswerHistory = async () => {
 };
 
 /**
+ * 解答履歴データをIndexedDBに保存します（既存データは上書き）。
+ * @param {Array} historyData 保存する解答履歴データの配列
+ * @returns {Promise<void>}
+ */
+const saveAnswerHistory = async (historyData) => {
+  if (!Array.isArray(historyData)) {
+    console.error("saveAnswerHistory: Invalid data provided. Expected an array.");
+    return Promise.reject("Invalid data: Expected an array for history.");
+  }
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_HISTORY], 'readwrite');
+    const store = transaction.objectStore(STORE_HISTORY);
+
+    const clearRequest = store.clear();
+    clearRequest.onsuccess = () => {
+      console.log(`IndexedDB: Cleared existing data in "${STORE_HISTORY}".`);
+      if (historyData.length === 0) {
+        // データが空の場合はトランザクション完了を待って resolve
+        return; 
+      }
+      let count = 0;
+      historyData.forEach(record => {
+        // 各レコードにidがあることを確認 (App.js側で生成されている想定)
+        if (record.id !== undefined && record.id !== null) {
+          const putRequest = store.put(record); // 既存のIDがあれば上書き
+          putRequest.onsuccess = () => {
+            count++;
+          };
+          putRequest.onerror = (event) => {
+            console.error(`IndexedDB: Error putting history record ${record.id}:`, event.target.error);
+            count++; // エラーでもカウントを進め、トランザクションは完了させる
+          };
+        } else {
+          console.warn("IndexedDB: Skipping history record with missing id:", record);
+          count++; // スキップでもカウント
+        }
+      });
+    };
+    clearRequest.onerror = (event) => {
+      console.error(`IndexedDB: Error clearing store "${STORE_HISTORY}":`, event.target.error);
+      reject(`Error clearing history store: ${event.target.error}`);
+    };
+
+    transaction.oncomplete = () => {
+      console.log(`IndexedDB: Transaction complete for saveAnswerHistory. Processed ${historyData.length} records.`);
+      resolve();
+    };
+    transaction.onerror = (event) => {
+      console.error("IndexedDB: Transaction error during saveAnswerHistory:", event.target.error);
+      reject(`Transaction error during saveAnswerHistory: ${event.target.error}`);
+    };
+  });
+};
+
+/**
  * IndexedDBのすべての学習データ（科目、履歴、設定）をクリアします。
  * @returns {Promise<void>}
  */
@@ -377,6 +433,7 @@ export {
   loadSubjects,
   addAnswerHistory,
   loadAnswerHistory,
+  saveAnswerHistory,
   clearAllData,
   clearAnswerStatus,
   saveSetting,

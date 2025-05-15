@@ -3,12 +3,40 @@ import React, { useState, useMemo } from 'react';
 import { X, ChevronDown } from 'lucide-react';
 // CSSモジュールをインポート
 import styles from './DayDetailModal.module.css';
+// dnd-kit から必要なものをインポート
+import { useDraggable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 
 // モーダル内で問題を表示するコンポーネント (カスタムクラス使用)
 function ModalQuestionItem({ question }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `modal-${question.id}`, // カレンダー上のアイテムとIDが衝突しないようにプレフィックスを追加
+    data: {
+      question: question,
+      fromModal: true // モーダルからのドラッグであることを示すフラグ
+    }
+  });
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+  };
+
   const displayText = `${question.subjectName || ''} / ${question.chapterName || ''} / 問題 ${question.id || ''}`;
+  
+  // ドラッグ中のスタイルを適用
+  const itemClass = isDragging 
+    ? `${styles.modalQuestionItem} ${styles.dragging}` 
+    : styles.modalQuestionItem;
+
   return (
-    <div className={styles.modalQuestionItem} title={displayText}>
+    <div 
+      ref={setNodeRef} 
+      style={style} 
+      className={itemClass} 
+      title={displayText}
+      {...listeners} 
+      {...attributes}
+    >
       {displayText}
     </div>
   );
@@ -41,7 +69,30 @@ const DayDetailModal = ({ isOpen, onClose, date, questions, formatDate }) => {
 
   if (!isOpen || !date) { return null; }
 
-  const subjectOrder = Object.keys(groupedQuestions).sort();
+  // 指定された科目順序
+  const desiredSubjectOrder = [
+    "企業経営理論",
+    "運営管理",
+    "経済学", // App.js の generateInitialData では "経済学" となっているため、それに合わせる
+    "経営情報システム",
+    "経営法務",
+    "中小企業経営・中小企業政策" // App.js の generateInitialData の科目名に合わせる
+  ];
+
+  const subjectOrder = Object.keys(groupedQuestions).sort((a, b) => {
+    const indexA = desiredSubjectOrder.indexOf(a);
+    const indexB = desiredSubjectOrder.indexOf(b);
+
+    if (indexA !== -1 && indexB !== -1) { // 両方とも指定順序にある場合
+      return indexA - indexB;
+    } else if (indexA !== -1) { // a のみ指定順序にある場合 (a が先)
+      return -1;
+    } else if (indexB !== -1) { // b のみ指定順序にある場合 (b が先)
+      return 1;
+    } else { // 両方とも指定順序にない場合 (アルファベット順)
+      return a.localeCompare(b);
+    }
+  });
 
   return (
     <div className={styles.overlay} onClick={onClose}>

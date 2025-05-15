@@ -110,7 +110,9 @@ function DroppableDateCell({ dayData, cellKey, openModal }) {
 
     return (
         <div ref={setNodeRef} className={cellClasses}>
-        <div className={dayNumberClasses}>{dayData.day}</div>
+        <div className={dayNumberClasses} onClick={() => isValidDate && dayData.questions && dayData.questions.length > 0 && openModal(dayData.date, questionsToShow)}> 
+            {dayData.day}
+        </div>
         <div className={styles.questionList}>
             {questionsToShow.slice(0, MAX_ITEMS_VISIBLE).map(q => (
             <DraggableQuestion key={q.id} question={q} />
@@ -139,8 +141,61 @@ const ScheduleView = ({ subjects, getQuestionsForDate, handleQuestionDateChange,
     const calendarWeeks = getCalendarData() || [];
     const weekDays = ['日', '月', '火', '水', '木', '金', '土'];
     const sensors = useSensors( useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor) );
-    const handleDragStart = (event) => { const { active } = event; let draggedQuestion = null; for (const subject of subjects) { for (const chapter of subject.chapters) { const found = chapter.questions.find(q => q.id === active.id); if (found) { draggedQuestion = { ...found, subjectName: subject.name, chapterName: chapter.name }; break; } } if (draggedQuestion) break; } setActiveDragItem(draggedQuestion); };
-    const handleDragEnd = (event) => { const { active, over } = event; setActiveDragItem(null); if (over && active.id !== over.id) { const questionId = active.id; const targetDate = over.data.current?.date; if (targetDate instanceof Date && !isNaN(targetDate.getTime())) { handleQuestionDateChange(questionId, targetDate); } else { if (typeof over.id === 'string' && !over.id.startsWith('empty-')) { console.error("ドロップ先IDから日付を特定できません:", over.id); } } } };
+    
+    const handleDragStart = (event) => {
+      const { active } = event;
+      // active.data.current から question を取得する (モーダル・カレンダー共通)
+      const draggedQuestion = active.data.current?.question;
+      if (draggedQuestion) {
+        setActiveDragItem(draggedQuestion);
+      } else {
+        // フォールバック: もし data.current.question がない場合 (従来のロジックに近いが、より堅牢に)
+        // ただし、DayDetailModal と DraggableQuestion の data 設定により、これは通常不要になるはず
+        let foundQuestion = null;
+        for (const subject of subjects) {
+          for (const chapter of subject.chapters) {
+            // active.id が 'modal-...' の形式かもしれないので、プレフィックスを除去して検索
+            const actualId = String(active.id).startsWith('modal-') 
+                            ? String(active.id).substring(6) 
+                            : active.id;
+            const q = chapter.questions.find(q => q.id === actualId);
+            if (q) {
+              foundQuestion = { ...q, subjectName: subject.name, chapterName: chapter.name };
+              break;
+            }
+          }
+          if (foundQuestion) break;
+        }
+        setActiveDragItem(foundQuestion);
+      }
+    };
+
+    const handleDragEnd = (event) => {
+      const { active, over } = event;
+      setActiveDragItem(null);
+
+      if (over && active.id !== over.id) {
+        // active.id から問題IDを正しく取得 (モーダルからの場合はプレフィックス除去)
+        const questionId = String(active.id).startsWith('modal-') 
+                          ? String(active.id).substring(6) 
+                          : active.id;
+        
+        const targetDate = over.data.current?.date;
+
+        if (targetDate instanceof Date && !isNaN(targetDate.getTime())) {
+          // モーダルを閉じる (ドラッグ＆ドロップで日付が変更された場合)
+          if (isModalOpen && active.data.current?.fromModal) {
+            closeDayModal();
+          }
+          handleQuestionDateChange(questionId, targetDate);
+        } else {
+          // targetDate が不正な場合のフォールバックやエラーログ
+          if (typeof over.id === 'string' && !over.id.startsWith('empty-')) {
+            console.error("ドロップ先IDから日付を特定できません:", over.id, over.data.current);
+          }
+        }
+      }
+    };
     const openDayModal = (date, questions) => { setModalDate(date); setModalQuestions(questions); setIsModalOpen(true); };
     const closeDayModal = () => { setIsModalOpen(false); setModalDate(null); setModalQuestions([]); };
 

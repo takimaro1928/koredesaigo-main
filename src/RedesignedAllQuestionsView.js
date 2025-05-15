@@ -9,7 +9,7 @@ import styles from './RedesignedAllQuestionsView.module.css'; // CSSモジュー
 
 // 科目ごとのカラーマップ（境界線の色に使用）
 const subjectColorMap = {
-  "経営管理論": "#4f46e5", // indigo
+  "企業経営理論": "#4f46e5", // indigo
   "運営管理": "#10b981", // emerald 
   "経済学": "#ef4444", // red
   "経営情報システム": "#3b82f6", // blue
